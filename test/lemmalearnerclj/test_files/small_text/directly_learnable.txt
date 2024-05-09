@@ -1,0 +1,3 @@
+Learnable.
+Learnable sentence.
+Learnable word.
