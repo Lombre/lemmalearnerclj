@@ -117,7 +117,7 @@
           learned-words (->> learned-large-text
                              :learning-progress
                              :learning-order
-                             (map first)
+                             (map :word)
                              set)]
       (is (= learned-words all-words)))))
 

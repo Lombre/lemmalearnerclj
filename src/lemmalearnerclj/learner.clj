@@ -11,6 +11,8 @@
 (require '[clojure.data.priority-map :refer [priority-map]])
 (require '[clojure.core.reducers :as reducers])
 
+(defrecord Score-point [word sentence score])
+
 (defrecord Learning-progress [word-to-times-learned learning-order])
 
 (defrecord Learning-database [sentences-by-score words-by-score word->frequency])
@@ -85,7 +87,7 @@
 
 (defn update-learning-order [learning-progress sentence unlearned-words score]
   ;; Append all the learned (word, sentence, score) pair
-  (reducers/reduce #(conj %1 [%2 sentence score]) (:learning-order learning-progress) unlearned-words ))
+  (reducers/reduce #(conj %1 (->Score-point %2 sentence score)) (:learning-order learning-progress) unlearned-words ))
 
 (defn learn-sentence [learning-information sentence score]
 ;  (println sentence)
@@ -160,6 +162,5 @@
 (defn directory->new-learning-information [directory]
   (text-database->new-learning-information (lemmalearnerclj.textdatabase/directory->text-database directory)))
 
-
-(defn score-point-to-str [[word sentence score]]
+(defn score-point-to-str [{:keys [word sentence score]}]
   (str (:raw word) " " (if (nil? score) score (math/round (- score))) " -> " (:raw sentence)))
