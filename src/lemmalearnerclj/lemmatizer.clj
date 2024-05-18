@@ -1,16 +1,20 @@
 (ns lemmalearnerclj.lemmatizer
   (:require
+   [clj-async-profiler.core :as prof]
    [clojure.core.reducers :as reducers]
    [clojure.data.json :as json]
+   [clojure.java.io :as io]
    [clojure.pprint :refer :all]
    [clojure.string :as str]
-   [lemmalearnerclj.textdatastructures])
-  (:import [lemmalearnerclj.textdatastructures Conjugation Lemma])
-  )
+   [lemmalearnerclj.helper :refer :all]
+   [lemmalearnerclj.lemmatizer :as lemmatizer]
+   [lemmalearnerclj.textdatastructures]
+   [parallel.core :as p]
+   [jsonista.core :as jsonista])
+  (:import
+   [lemmalearnerclj.textdatastructures Conjugation Lemma]))
 
-(defrecord Lemmatizer [language word->lemma word->lemmas lemma->words])
-
-(def test-wikitionary-file-path "dictionary-files/noninflected-words-danish.json")
+(defrecord Lemmatizer [language conjugation->lemma conjugation->lemmas lemma->conjugations])
 
 (defn get-json-lines [raw-dict]
   (->> raw-dict str/lower-case str/split-lines (pmap json/read-json)))
@@ -52,12 +56,12 @@
             (transient {}) m))))
 
 (defn choose-single-lemma [word->lemmas]
-  (->> word->lemmas
+  (->> word->lemmas                     ; Choose the word itself, if it is an option, otherwise the first option.
        (#(into {} (for [[k v] %] [k (if (contains? v k) k
                                         (first v))])))))
 
 (defn language->save-path [language]
-  (str "dictionary-files/" language ".json"))
+  (str "dictionary-files/noninflected-words-" language ".json"))
 
 (defn language->alternative-save-path [language]
   (str "dictionary-files/" language "-saved.json"))
@@ -67,86 +71,39 @@
        (#(update-keys % :raw))
        (#(update-vals % (partial map :raw)))
        (json/write-str)
-       ;; json/pprint
-       ;; with-out-str
        (spit (language->alternative-save-path language))))
 
-(defn json-lines->lemmatizer [language json-lines]
-  (let [lemma->words (json-lines->lemma->conjugation json-lines)
-        word->lemmas (invert-many-to-many lemma->words)
-        word->lemma (choose-single-lemma word->lemmas)]
-    (Lemmatizer. language word->lemma word->lemmas lemma->words)))
+(defn lemma->words-to-lemmatizer [language lemma->conjugations]
+  (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
+        conjugation->lemma (choose-single-lemma conjugation->lemmas)]
+    (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations)))
 
-(defn language->lemmatizer [language]
-  (let [file-path (str "dictionary-files/noninflected-words-" language ".json")
-        dictionary-json-lines (path->json-lines file-path)]
-    (json-lines->lemmatizer language dictionary-json-lines)))
-;; => #'lemmalearnerclj.lemmatizer/language->lemmatizer
+(defn json-lines->lemmatizer [language json-lines & {:keys [save-lemmatizer] :or {save-lemmatizer true}}]
+  (let [lemmatizer  (lemma->words-to-lemmatizer language (json-lines->lemma->conjugation json-lines))]
+    (do (if save-lemmatizer (save-lemma->words language (:lemma->words lemmatizer)) nil)
+        lemmatizer)))
 
 (defn load-saved-lemma-to-words-file [language]
   (->> language
        language->alternative-save-path
        slurp
-       json/read-json
+       jsonista/read-value
        (#(update-keys % (fn [x] (Lemma. (name x))))) ; The keys and values are strings, so we need to map back
-       (#(update-vals % (partial map (fn [x] (Conjugation. x)))))))
+       (#(p/update-vals % (fn [x] (set (map (fn [y] (Conjugation. y)) x)))))
+       ))
 
-(def danish-lemmatizer (language->lemmatizer "danish"))
+(defn language->lemmatizer [language]
+  (wrap-with-print (str "Loading dictionary for language:" language)
+      (if (.exists (io/file (language->alternative-save-path language)))
+        (do (println "Loading existing lemmafile")
+            (lemma->words-to-lemmatizer language (load-saved-lemma-to-words-file language)))
+        (do (println "Loading new lemmafile")
+            (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
+      (str "Finished loading dictionary")))
 
-(save-lemma->words "danish" (:lemma->words danish-lemmatizer))
-
-(= (load-saved-lemma-to-words-file "danish") (:lemma->words danish-lemmatizer))
-
-(def danish-lines (path->json-lines (str "dictionary-files/noninflected-words-" "danish" ".json")))
-
-(defn test-problem [[line & remainder]]
-  (if (nil? line) true
-      (do
-        (println (:word line))
-        (->> line
-             json-to-conjugations
-             count
-             pprint)
-        (recur remainder))))
-
-;; (->> danish-lines test-problem)
-
-(->>  danish-lines
-     (filter #(= (Lemma. "øde") (json-to-lemma %)))
-     (map :forms)
-     ;; (:forms)
-     ;; (filter #(contains? % :tags))
-     ;; (filter #(not (.contains (:tags %) "auxiliary")))
-     ;; (map :tags)
-     ;; (filter #(.contains % "auxiliary"))
-     )
-
-;; (->> danish-lemmatizer
-;;      :lemma->words
-;;      (take 10)
-;;      pprint
-;;      ;; (#(get % (Lemma. "klima")))
-
-;;      ;; (filter #(->> % key :raw (= "bombe")))
-;;      ;; (run! println)
-;;      )
-;; (get (:lemma->words danish-lemmatizer) (Lemma. "bombe"))
-;;
-(->> danish-lemmatizer
-     :word->lemmas
-     (sort-by #(count (val %)) >)
-     (take 50)
-     (run! pprint)
-     ;; val
-     ;; count
-     ;; pprint
-     ;; pprint
-     ;; spy
-     ;; (#(str "dictionary-files/noninflected-words-" % ".json"))
-     ;; spy-talk
-     ;; path->json-lines
-     ;; spy-talk
-     ;; json-lines->lemma->conjugation
-     ;; (invert-many-to-many)
-     ;; pprint
-     )
+;; (prof/profile
+;;     (->> (language->lemmatizer "english")
+;;          :lemma->words
+;;          (take 10)
+;;          pprint))
+;; (prof/serve-ui 8080)

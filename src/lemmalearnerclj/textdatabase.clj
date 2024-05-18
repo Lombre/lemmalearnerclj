@@ -1,7 +1,11 @@
 (ns lemmalearnerclj.textdatabase
-; (:require [testproject.textdatastructures])
-; (:import [testproject.textdatastructures Text Paragraph Sentence Conjugation Lemma])
- (:require [lemmalearnerclj.parser :as parser]))
+                                        ; (:require [testproject.textdatastructures])
+                                        ; (:import [testproject.textdatastructures Text Paragraph Sentence Conjugation Lemma])
+  (:require
+   [lemmalearnerclj.lemmatizer :as lemmatizer]
+   [lemmalearnerclj.parser :as parser]
+   [lemmalearnerclj.textdatastructures])
+  (:import [lemmalearnerclj.textdatastructures Lemma]))
 
 (require '[clojure.core.reducers :as reducers])
 
@@ -9,8 +13,11 @@
 
 (defrecord Textdatabase [texts
                          sentences
-                         words
-                         word->sentences])
+                         conjugations
+                         lemmas
+                         conjugation->sentences
+                         lemma->conjugations
+                         conjugation->lemma])
 
 (defn text->sentences [text]
   (->> text
@@ -20,7 +27,6 @@
 
 (defn directory->file-paths [directory-path]
   (map #(.getAbsolutePath %) (.listFiles (clojure.java.io/file directory-path))))
-
 
 (defn parse-texts-in-directory [directory]
   (->> directory
@@ -46,11 +52,21 @@
                   (reducers/reduce (fn [xs x] (assoc xs x #{%})) {})))
        (reducers/fold (partial merge-with into))))
 
+(defn conjugations->lemmas [conjugation->lemma conjugations]
+  (->> conjugations
+       (map #(get conjugation->lemma % ))
+       (filter some?)
+       set))
+
+
 (defn texts->text-database [texts]
-  (let [sentences (texts->sentences texts)
-        words (sentences->words sentences)
+  (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer "danish")
+        sentences (texts->sentences texts)
+        conjugations (sentences->words sentences)
+        lemmas (conjugations->lemmas conjugation->lemma conjugations)
         word->sentences (sentences->word->sentences sentences)]
-    (Textdatabase. texts sentences words word->sentences)))
+    (Textdatabase. texts sentences conjugations lemmas word->sentences
+                   lemma->conjugations conjugation->lemma)))
 
 (defn directory->text-database [directory]
   (println "Parsing texts")
