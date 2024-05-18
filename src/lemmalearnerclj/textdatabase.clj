@@ -59,8 +59,8 @@
        set))
 
 
-(defn texts->text-database [texts]
-  (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer "danish")
+(defn texts->text-database [{language :language} texts]
+  (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer language)
         sentences (texts->sentences texts)
         conjugations (sentences->words sentences)
         lemmas (conjugations->lemmas conjugation->lemma conjugations)
@@ -68,8 +68,8 @@
     (Textdatabase. texts sentences conjugations lemmas word->sentences
                    lemma->conjugations conjugation->lemma)))
 
-(defn directory->text-database [directory]
+(defn directory->text-database [config directory]
   (println "Parsing texts")
   (let [texts (parse-texts-in-directory directory)]
     (println "Finished parsing texts")
-    (texts->text-database texts)))
+    (texts->text-database config texts)))

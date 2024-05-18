@@ -17,7 +17,7 @@
 
 (defrecord Learning-database [sentences-by-score lemmas-by-score lemma->frequency])
 
-(defrecord Learning-information [learning-progress learning-database text-database])
+(defrecord Learning-information [learning-progress learning-database text-database config])
 
 (defn conjugation->lemma [text-database conjugation]
   (get (:conjugation->lemma text-database) conjugation ))
@@ -118,7 +118,7 @@
         updated-times-learned (update-times-learned (:word-to-times-learned learning-progress) (:words sentence))
         updated-progress (->Learning-progress updated-times-learned updated-learning-order)
         updated-learning-database (update-learning-database-with-learned-words updated-progress learning-database (:text-database learning-information) unlearned-lemmas)]
-    (->Learning-information updated-progress updated-learning-database (:text-database learning-information))))
+    (->Learning-information updated-progress updated-learning-database (:text-database learning-information) (:config learning-information))))
 
 (defn learn-sentences [learning-information sentences scores]
   (reducers/reduce #(learn-sentence %1 (first %2) (second %2))
@@ -169,14 +169,14 @@
       (recur updated-learning-information)
       learning-information)))
 
-(defn text-database->new-learning-information [text-database]
+(defn text-database->new-learning-information [config text-database]
   (let [learning-progress (->Learning-progress {} [])
         learning-database (text-database->learning-database text-database)
-        learning-information (->Learning-information learning-progress learning-database text-database)]
+        learning-information (->Learning-information learning-progress learning-database text-database config)]
     learning-information))
 
-(defn directory->new-learning-information [directory]
-  (text-database->new-learning-information (lemmalearnerclj.textdatabase/directory->text-database directory)))
+(defn directory->new-learning-information [config directory]
+  (text-database->new-learning-information config (lemmalearnerclj.textdatabase/directory->text-database config directory)))
 
 (defn score-point-to-str [{:keys [lemma sentence score]}]
   (str (:raw lemma) " " (if (nil? score) score (math/round (- score))) " -> " (:raw sentence)))

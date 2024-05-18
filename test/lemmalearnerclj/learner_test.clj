@@ -11,8 +11,11 @@
 (def test-sentence1 (parser/parse-raw-sentence "Dette er det."))
 (def test-sentence2 (parser/parse-raw-sentence "Dette også det."))
 
+(def test-config
+  {:language "danish"})
+
 (def test-text-database
-  (lemmalearnerclj.textdatabase/directory->text-database "test/lemmalearnerclj/test_files/test_text_folder/"))
+  (lemmalearnerclj.textdatabase/directory->text-database test-config "test/lemmalearnerclj/test_files/test_text_folder/"))
 
 (deftest test-sentence-to-lemmas
   (testing "Sentences gives correct lemmas"
@@ -22,14 +25,14 @@
   (->> raw-text
        (parser/parse-raw-text "test")
        list
-       lemmalearnerclj.textdatabase/texts->text-database
-       text-database->new-learning-information))
+       (lemmalearnerclj.textdatabase/texts->text-database test-config)
+       (text-database->new-learning-information test-config)))
 
 (def blank-learning-information
-  (text-database->new-learning-information test-text-database))
+  (text-database->new-learning-information test-text-database test-config))
 
 (def large-learning-information
-  (directory->new-learning-information "test/lemmalearnerclj/test_files/test_text_folder/"))
+  (directory->new-learning-information test-config "test/lemmalearnerclj/test_files/test_text_folder/"))
 
 (def learned-large-text
   (learn-all-lemmas large-learning-information))
@@ -108,9 +111,9 @@
       (is second-sentence-learnable true)
       (is (not (learnable? (:learning-progress learned-second-sentence) (:text-database learned-large-text) test-sentence2))))))
 
-(deftest test-get-a-lemma-word
+(deftest test-get-a-lemma
   (testing "Did not return a lemma word"
-    (let [unlearned-lemma (get-a-unlearned-lemma blank-learning-information)]
+    (let [unlearned-lemma (get-a-unlearned-lemma large-learning-information)]
       (is (not (nil? unlearned-lemma))))))
 
 

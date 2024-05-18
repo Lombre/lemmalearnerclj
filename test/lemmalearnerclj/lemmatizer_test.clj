@@ -54,7 +54,7 @@
 (deftest test-is-same-saved-and-loaded-lemmafiles
   (testing ""
     (let [json-lines (path->json-lines "dictionary-files/test/two-words.json")
-          {lemma->words :lemma->words} (json-lines->lemmatizer "test" json-lines)
-          _ (save-lemma->words "test/two-words" lemma->words)
+          {lemma->conjugations :lemma->conjugations} (json-lines->lemmatizer "test" json-lines)
+          _ (save-lemma->words "test/two-words" lemma->conjugations)
           loaded-lemma->words (load-saved-lemma-to-words-file "test/two-words")]
-      (is (= lemma->words loaded-lemma->words)))))
+      (is (= lemma->conjugations loaded-lemma->words)))))
