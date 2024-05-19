@@ -30,7 +30,7 @@
        (filter #(contains? % :tags))
        (filter #(not (.contains (:tags %) "auxiliary")))
        (map :form)
-       (filter #(not (includes? " " %)))
+       (filter #(not (.contains % " ")))
        (filter #(not (contains? #{"", "-"} %) ))
        (map #(Conjugation. %))
        set))
@@ -45,8 +45,8 @@
 
 (defn json-lines->lemma->conjugation [json-lines]
   (->> json-lines
-       (pmap jsonobj->lemmamap)
-       (filter #(->> % first :raw (includes? " ") not))
+       (map jsonobj->lemmamap)
+       (filter #(not (.contains (:raw (first %)) " ")))
        (map #(identity {(first %) (second %)}))
        merge-lemma-maps))
 
