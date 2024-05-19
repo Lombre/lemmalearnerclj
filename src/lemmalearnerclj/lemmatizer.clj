@@ -1,16 +1,15 @@
 (ns lemmalearnerclj.lemmatizer
   (:require
-   [clj-async-profiler.core :as prof]
    [clojure.core.reducers :as reducers]
    [clojure.data.json :as json]
    [clojure.java.io :as io]
    [clojure.pprint :refer :all]
-   [clojure.string :as str]
+   [clojure.string :as str :refer [includes?]]
+   [jsonista.core :as jsonista]
    [lemmalearnerclj.helper :refer :all]
    [lemmalearnerclj.lemmatizer :as lemmatizer]
    [lemmalearnerclj.textdatastructures]
-   [parallel.core :as p]
-   [jsonista.core :as jsonista])
+   [parallel.core :as p])
   (:import
    [lemmalearnerclj.textdatastructures Conjugation Lemma]))
 
@@ -31,6 +30,7 @@
        (filter #(contains? % :tags))
        (filter #(not (.contains (:tags %) "auxiliary")))
        (map :form)
+       (filter #(not (includes? " " %)))
        (filter #(not (contains? #{"", "-"} %) ))
        (map #(Conjugation. %))
        set))
@@ -38,13 +38,17 @@
 (defn jsonobj->lemmamap [jsonobj]
   (let [lemma (json-to-lemma jsonobj)
         conjugations (json-to-conjugations jsonobj)]
-    {lemma (conj conjugations (Conjugation. (:raw lemma)))}))
+    [lemma (conj conjugations (Conjugation. (:raw lemma)))]))
 
 (defn merge-lemma-maps [lemma-maps]
   (reducers/reduce #(merge-with into %1 %2) {} lemma-maps))
 
 (defn json-lines->lemma->conjugation [json-lines]
-  (->> json-lines (pmap jsonobj->lemmamap) merge-lemma-maps))
+  (->> json-lines
+       (pmap jsonobj->lemmamap)
+       (filter #(->> % first :raw (includes? " ") not))
+       (map #(identity {(first %) (second %)}))
+       merge-lemma-maps))
 
 (defn invert-many-to-many
   "returns a many-to-many mapping"
@@ -55,8 +59,10 @@
               (reduce (fn [m v] (assoc! m v (conj (get m v to) k))) m vs))
             (transient {}) m))))
 
+
 (defn choose-single-lemma [word->lemmas]
-  (->> word->lemmas                     ; Choose the word itself, if it is an option, otherwise the first option.
+  ;;;  Choose the word itself, if it is an option, otherwise the first option.
+  (->> word->lemmas
        (#(into {} (for [[k v] %] [k (if (contains? v k) k
                                         (first v))])))))
 
@@ -70,8 +76,12 @@
   (->> lemma->words
        (#(update-keys % :raw))
        (#(update-vals % (partial map :raw)))
-       (json/write-str)
-       (spit (language->alternative-save-path language))))
+       (into (sorted-map))
+       (#(json/write-str % :escape-unicode false))
+       (#(str/replace % #"]," "],\n "))
+       #_(#(with-out-str (json/pprint % :escape-unicode false)))
+       (spit (language->alternative-save-path language))
+       ))
 
 (defn lemma->words-to-lemmatizer [language lemma->conjugations]
   (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
@@ -89,17 +99,23 @@
        slurp
        jsonista/read-value
        (#(update-keys % (fn [x] (Lemma. (name x))))) ; The keys and values are strings, so we need to map back
-       (#(p/update-vals % (fn [x] (set (map (fn [y] (Conjugation. y)) x)))))
-       ))
+       (#(p/update-vals % (fn [x] (set (map (fn [y] (Conjugation. y)) x)))))))
 
 (defn language->lemmatizer [language]
-  (wrap-with-print (str "Loading dictionary for language:" language)
-      (if (.exists (io/file (language->alternative-save-path language)))
-        (do (println "Loading existing lemmafile")
-            (lemma->words-to-lemmatizer language (load-saved-lemma-to-words-file language)))
-        (do (println "Loading new lemmafile")
-            (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
-      (str "Finished loading dictionary")))
+  (wrap-with-print (str "Loading dictionary for language: " language)
+                   (if (.exists (io/file (language->alternative-save-path language)))
+                       (do (println "Loading existing lemmafile")
+                           (lemma->words-to-lemmatizer language (load-saved-lemma-to-words-file language)))
+                       (do (println "Loading new lemmafile")
+                           (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
+                   (str "Finished loading dictionary")))
+
+(def test-lemmatizer
+  (language->lemmatizer "danish"))
+
+(->> test-lemmatizer
+     :lemma->conjugations
+     (save-lemma->words "danish"))
 
 ;; (prof/profile
 ;;     (->> (language->lemmatizer "english")

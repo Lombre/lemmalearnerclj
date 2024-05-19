@@ -11,14 +11,14 @@
 (deftest test-convert-json-to-lemma-map
   (testing "Cannot load a dictionary from a file"
     (let [json-lines (path->json-lines "dictionary-files/test/single-word.json")]
-      (is (= {(Lemma. "kage") #{(Conjugation. "kage")
+      (is (= [(Lemma. "kage") #{(Conjugation. "kage")
                                 (Conjugation. "kagens")
                                 (Conjugation. "kagerne")
                                 (Conjugation. "kagers")
                                 (Conjugation. "kagernes")
                                 (Conjugation. "kagen")
                                 (Conjugation. "kager")
-                                (Conjugation. "kages")}}
+                                (Conjugation. "kages")}]
              (->> json-lines first jsonobj->lemmamap))))))
 
 (deftest test-json-lines->lemmatizer
