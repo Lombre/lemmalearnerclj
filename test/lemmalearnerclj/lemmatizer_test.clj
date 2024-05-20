@@ -38,11 +38,11 @@
              (helper/record->map conjugation->lemma)))
       (is (= {{:raw "kage"} #{{:raw "kagens"} {:raw "kage"} {:raw "kagerne"} {:raw "kagers"}
                               {:raw "kagernes"} {:raw "kagen"} {:raw "kager"} {:raw "kages"}},
-              {:raw "fisk"} #{{:raw "fiskene"} {:raw "fisks"} {:raw "fisken"} {:raw "kagen"}
+              {:raw "fisk"} #{{:raw "fiskene"} {:raw "fisks"} {:raw "fisken"} 
                               {:raw "fiskenes"} {:raw "fisk"} {:raw "fiskens"}}}
              (helper/record->map lemma->conjugations)))
       (is (= {{:raw "kagens"} #{{:raw "kage"}}, {:raw "fiskene"} #{{:raw "fisk"}},
-              {:raw "fisks"} #{{:raw "fisk"}}, {:raw "kage"} #{{:raw "kage"}},
+              {:raw "fisks"} #{{:raw "fisk"}}, {:raw "kage"} #{{:raw "kage"} {:raw "fisk"}},
               {:raw "fisken"} #{{:raw "fisk"}}, {:raw "kagerne"} #{{:raw "kage"}},
               {:raw "kagers"} #{{:raw "kage"}}, {:raw "kagernes"} #{{:raw "kage"}},
               {:raw "kagen"} #{{:raw "kage"} {:raw "fisk"}}, {:raw "fisk"} #{{:raw "fisk"}},
@@ -55,6 +55,6 @@
   (testing ""
     (let [json-lines (path->json-lines "dictionary-files/test/two-words.json")
           {lemma->conjugations :lemma->conjugations} (json-lines->lemmatizer "test" json-lines)
-          _ (save-lemma->words "test/two-words" lemma->conjugations)
+          _ (save-lemma->conjugations "test/two-words" lemma->conjugations)
           loaded-lemma->words (load-saved-lemma-to-words-file "test/two-words")]
       (is (= lemma->conjugations loaded-lemma->words)))))

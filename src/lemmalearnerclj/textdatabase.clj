@@ -65,7 +65,7 @@
         conjugations (sentences->words sentences)
         lemmas (conjugations->lemmas conjugation->lemma conjugations)
         word->sentences (sentences->word->sentences sentences)]
-    (Textdatabase. texts sentences conjugations lemmas word->sentences
+    (Textdatabase. nil sentences conjugations lemmas word->sentences
                    lemma->conjugations conjugation->lemma)))
 
 (defn directory->text-database [config directory]

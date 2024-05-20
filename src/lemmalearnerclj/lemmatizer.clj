@@ -72,8 +72,8 @@
 (defn language->alternative-save-path [language]
   (str "dictionary-files/" language "-saved.json"))
 
-(defn save-lemma->words [language lemma->words]
-  (->> lemma->words
+(defn save-lemma->conjugations [language lemma->conjugations]
+  (->> lemma->conjugations
        (#(update-keys % :raw))
        (#(update-vals % (partial map :raw)))
        (into (sorted-map))
@@ -83,14 +83,23 @@
        (spit (language->alternative-save-path language))
        ))
 
-(defn lemma->words-to-lemmatizer [language lemma->conjugations]
+(defn uniformize-lemma->conjugations [conjugation->lemma lemma->conjugations]
+    (into {} (for [[k v] lemma->conjugations]
+               [k (->> v (filter #(= k (get conjugation->lemma %)) ) set)]))) ;; Ensure that conjugations and lemmas point at the same thing.
+  ;; (let [raw-lemmas (set (map :raw (keys lemma->conjugations)))]
+  ;;   (into {} (for [[k v] lemma->conjugations]
+  ;;              [k (->> v (filter #(or (not (contains? raw-lemmas (:raw %)))
+  ;;                                     (= (:raw k) (:raw %)))))])))
+
+(defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]
   (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
-        conjugation->lemma (choose-single-lemma conjugation->lemmas)]
-    (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations)))
+        conjugation->lemma (choose-single-lemma conjugation->lemmas)
+        lemma->conjugations-uniform (uniformize-lemma->conjugations conjugation->lemma lemma->conjugations)]
+    (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations-uniform)))
 
 (defn json-lines->lemmatizer [language json-lines & {:keys [save-lemmatizer] :or {save-lemmatizer true}}]
-  (let [lemmatizer  (lemma->words-to-lemmatizer language (json-lines->lemma->conjugation json-lines))]
-    (do (if save-lemmatizer (save-lemma->words language (:lemma->words lemmatizer)) nil)
+  (let [lemmatizer  (lemma->conjugations-to-lemmatizer language (json-lines->lemma->conjugation json-lines))]
+    (do (if save-lemmatizer (save-lemma->conjugations language (:lemma->conjugations lemmatizer)) nil)
         lemmatizer)))
 
 (defn load-saved-lemma-to-words-file [language]
@@ -102,24 +111,11 @@
        (#(p/update-vals % (fn [x] (set (map (fn [y] (Conjugation. y)) x)))))))
 
 (defn language->lemmatizer [language]
-  (wrap-with-print (str "Loading dictionary for language: " language)
-                   (if (.exists (io/file (language->alternative-save-path language)))
-                       (do (println "Loading existing lemmafile")
-                           (lemma->words-to-lemmatizer language (load-saved-lemma-to-words-file language)))
-                       (do (println "Loading new lemmafile")
-                           (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
-                   (str "Finished loading dictionary")))
-
-(def test-lemmatizer
-  (language->lemmatizer "danish"))
-
-(->> test-lemmatizer
-     :lemma->conjugations
-     (save-lemma->words "danish"))
-
-;; (prof/profile
-;;     (->> (language->lemmatizer "english")
-;;          :lemma->words
-;;          (take 10)
-;;          pprint))
-;; (prof/serve-ui 8080)
+  (wrap-with-print
+   (str "Loading dictionary for language: " language)
+   (if (.exists (io/file (language->alternative-save-path language)))
+     (do (println "Loading existing lemmafile")
+         (lemma->conjugations-to-lemmatizer language (load-saved-lemma-to-words-file language)))
+     (do (println "Loading new lemmafile")
+         (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
+   (str "Finished loading dictionary")))

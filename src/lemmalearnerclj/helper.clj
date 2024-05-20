@@ -10,3 +10,8 @@
        (let [expression# ~expression]
          (println ~after)
          expression#)))
+
+(defn print-if [condition message]
+  (if condition
+    (println message)
+    nil))
