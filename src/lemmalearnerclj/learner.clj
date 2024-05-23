@@ -29,7 +29,8 @@
   (->> sentence
        :words
        (map #(conjugation->lemma text-database %))
-       (filter some?)))
+       (filter some?)
+       set))
 
 (defn lemma->sentences [text-database lemma]
   (->> lemma
@@ -48,7 +49,7 @@
 (defn sentence->unlearned-lemmas [learning-progress text-database sentence]
   (->> (sentence->lemmas text-database sentence)
        (filter #(= 0 (lemma->times-learned learning-progress text-database %)))
-       set))
+       distinct))
 
 (defn merge-frequencies [frequencies]
   (reducers/fold (partial merge-with +) frequencies))

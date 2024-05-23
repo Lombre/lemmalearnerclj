@@ -1,5 +1,7 @@
 (ns lemmalearnerclj.parser ;  (:require [testproject.textdatabase])
-  (:require [lemmalearnerclj.textdatastructures])
+  (:require [lemmalearnerclj.textdatastructures]
+            [lemmalearnerclj.helper :as helper]
+            [clojure.set :as set])
   (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence Conjugation]))
 
 ;; (require '[clojure.data.priority-map :refer [priority-map]])
@@ -83,8 +85,8 @@
 
 (defn parse-raw-paragraph
   ([raw-paragraph]
-    (let [parsed-paragraph (parse-raw-paragraph raw-paragraph [] [])] ;; Add raw paragraph to the paragraph
-        (assoc parsed-paragraph :raw (apply str (map text-str raw-paragraph)))))
+   (let [parsed-paragraph (parse-raw-paragraph raw-paragraph [] [])] ;; Add raw paragraph to the paragraph
+     (assoc parsed-paragraph :raw (apply str (map text-str raw-paragraph)))))
   ([remaining-raw-paragraph sentences current-sentence]
    (let [cur-char  (first remaining-raw-paragraph)
          next-char (second remaining-raw-paragraph)]
@@ -114,13 +116,15 @@
 (defn parse-raw-text [text-name raw-text]
   (->> raw-text
        split-into-raw-paragraphs
-       (map str/trim)
+       (pmap str/trim)
        (filter #(not= "" %))
-       (map seq)
-       (map parse-raw-paragraph)
+       (pmap #(->> %
+                   seq
+                   parse-raw-paragraph))
+       doall
        (Text. (.getName (io/file text-name)))))
 
 (defn text-path->text [text-path]
-  (->> text-path
-       read-text-from-path
-       (parse-raw-text text-path)))
+  (let [text (->> text-path read-text-from-path (parse-raw-text text-path))]
+    (println (str "Parsed " (.getName (io/file text-path))))
+    text))
