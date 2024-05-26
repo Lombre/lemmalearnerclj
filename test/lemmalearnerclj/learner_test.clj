@@ -5,9 +5,11 @@
    [lemmalearnerclj.helper :as helper]
    [lemmalearnerclj.learner :refer :all]
    [lemmalearnerclj.parser :as parser]
-   [lemmalearnerclj.textdatabase]
-   [lemmalearnerclj.textdatastructures :refer :all])
-  (:import [lemmalearnerclj.textdatastructures Sentence Conjugation Lemma]))
+   [lemmalearnerclj.textdatabase :refer :all]
+   [lemmalearnerclj.textdatastructures :refer :all]
+   [clojure.pprint :as pprint])
+  (:import
+   [lemmalearnerclj.textdatastructures Sentence Conjugation Lemma]))
 
 (def test-sentence1 (parser/parse-raw-sentence "Dette er det."))
 (def test-sentence2 (parser/parse-raw-sentence "Dette også det."))
@@ -28,9 +30,6 @@
        list
        (lemmalearnerclj.textdatabase/texts->text-database test-config)
        (text-database->new-learning-information test-config)))
-
-(def blank-learning-information
-  (text-database->new-learning-information test-text-database test-config))
 
 (def large-learning-information
   (directory->new-learning-information test-config "test/lemmalearnerclj/test_files/larger_texts/"))
@@ -123,12 +122,12 @@
     (let [learned-no-sentence large-learning-information
           learned-first-sentence  (learn-sentence learned-no-sentence test-sentence1 nil)
           learned-second-sentence (learn-sentence learned-first-sentence test-sentence2 nil)
-          second-sentence-learnable (learnable? (:learning-progress learned-first-sentence) (:text-database learned-large-text) test-sentence2)]
-      (is (not (learnable? (:learning-progress learned-no-sentence) (:text-database learned-large-text) test-sentence1)))
-      (is (not (learnable? (:learning-progress learned-no-sentence)  (:text-database learned-large-text)test-sentence2)))
-      (is (not (learnable? (:learning-progress learned-first-sentence)  (:text-database learned-large-text)test-sentence1)))
+          second-sentence-learnable (learnable? learned-first-sentence test-sentence2)]
+      (is (not (learnable? learned-no-sentence test-sentence1)))
+      (is (not (learnable? learned-no-sentence test-sentence2)))
+      (is (not (learnable? learned-first-sentence test-sentence1)))
       (is second-sentence-learnable true)
-      (is (not (learnable? (:learning-progress learned-second-sentence) (:text-database learned-large-text) test-sentence2))))))
+      (is (not (learnable? learned-second-sentence test-sentence2))))))
 
 (deftest test-get-a-lemma
   (testing "Did not return a lemma word"
@@ -149,12 +148,3 @@
 (deftest test-all-words-learned-greedily
   (testing ""
     (is (= 1 1))))
-
- ;; (->> learned-large-text :learning-progress :learning-order (map score-point-to-str)
- ;;       (#(map vector
- ;;              (range 1 (count %))
- ;;              (repeat (count %) ") ")
- ;;              %))
- ;;       (map #(reducers/reduce str %))
- ;;       (take 100)
- ;;       (run! pprint))
