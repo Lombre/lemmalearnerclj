@@ -72,7 +72,7 @@
 
 (deftest test-learn-word-updates-sentences-by-score
   (testing ""
-    (let [simple-information (raw-text->new-learning-information "Kan læres.")
+    (let [simple-information (raw-text->new-learning-information "Kan. Kunne. Kan læres.")
           learned-sentence (learn-top-sentence simple-information)
           learnable-sentences (->> learned-sentence :learning-database :sentences-by-score seq (map first) (map :raw) set)]
       (is (= #{"Kan læres."}

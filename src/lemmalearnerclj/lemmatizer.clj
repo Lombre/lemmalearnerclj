@@ -59,12 +59,15 @@
               (reduce (fn [m v] (assoc! m v (conj (get m v to) k))) m vs))
             (transient {}) m))))
 
-
 (defn choose-single-lemma [word->lemmas]
-  ;;;  Choose the word itself, if it is an option, otherwise the first option.
+;;;  Choose the word itself, if it is an option, otherwise the first option.
   (->> word->lemmas
-       (#(into {} (for [[k v] %] [k (if (contains? v k) k
-                                        (first v))])))))
+       (#(into {}
+               (for [[k v] %]
+                 [k (if (contains? v k) k (first v))])))))
+
+
+(vector {"test" ["fisk", "kage"]})
 
 (defn language->save-path [language]
   (str "dictionary-files/noninflected-words-" language ".json"))

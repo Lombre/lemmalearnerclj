@@ -37,8 +37,7 @@
 (defn sentence->lemmas [text-database sentence]
   (if (contains? sentence :lemmas)
     (:lemmas sentence)
-    (->> sentence
-         :words
+    (->> (:words sentence)
          (map #(conjugation->lemma text-database %))
          (filter some?)
          distinct)))
@@ -52,13 +51,20 @@
 (defn conjugation->times-learned [learning-progress word]
   (get (:conjugation-to-times-learned learning-progress) word 0))
 
-(defn lemma->times-learned [learning-progress text-database lemma]
-  (->> lemma
-       (get (:lemma->conjugations text-database))
-       (map #(conjugation->times-learned learning-progress %))
-       (reduce +)))
+(defn lemma->times-learned
+  ([learning-information lemma] (lemma->times-learned (:learning-progress learning-information) (:text-database learning-information) lemma))
+  ([learning-progress text-database lemma]
+   (->> lemma
+        (get (:lemma->conjugations text-database))
+        (map #(conjugation->times-learned learning-progress %))
+        (reduce +))))
 
 (defn sentence->unlearned-lemmas [{text-database :text-database learning-progress :learning-progress} sentence]
+  (if (not= (:raw sentence) "NoSentence: rage") nil
+      (do  (pprint (sentence->lemmas text-database sentence))
+           (pprint (lemma->times-learned learning-progress text-database (first (sentence->lemmas text-database sentence))))
+           (pprint (->> (sentence->lemmas text-database sentence)
+                        (filter #(= 0 (lemma->times-learned learning-progress text-database %)))))))
   (->> (sentence->lemmas text-database sentence)
        (filter #(= 0 (lemma->times-learned learning-progress text-database %)))))
 
@@ -110,41 +116,41 @@
                                                           (:sentences text-database))]
     (->Learning-database sentences-by-score lemmas-by-score lemmas-by-frequency)))
 
+(defn get-actual-unlearnable-sentences [unlearnable-sentences sentences-by-score]
+  (->> unlearnable-sentences
+       (p/group-by #(contains? sentences-by-score (nth % 0 )))
+       (#(get % true))))
+
 (defn update-with-sentence-pairs [learning-information sentence-learned-pairs]
-  (let [{learnable-sentences true
-         unlearnable-sentences false} (p/group-by #(nth % 1) sentence-learned-pairs)
+  (let [learnable-sentences (filter #(nth % 1) sentence-learned-pairs)
+        unlearnable-sentences (filter #(not (nth % 1)) sentence-learned-pairs)
         learnable-sentences-with-score (->> learnable-sentences
                                             (pmap #(identity [(nth % 0)
-                                                              (nth % 1)
-                                                              (score-sentence learning-information (nth % 0))])))]
-    ;; (helper/print-if (< 1000 (count unlearnable-sentences))
-    ;;                 "#sentences in db: " (count sentences-by-score)
-    ;;                 ", #sentences-to-update: " (count learnable-sentences)
-    ;;                 ", #sentences to remove: " (count unlearnable-sentences)
-    ;;                 ", #sentences to remove, in db: " (count unlearnable-sentences-to-remove))
-    (->> (:learning-database learning-information)
-         :sentences-by-score
-         (#(reducers/reduce (fn [xs x] (dissoc xs (nth x 0))) % unlearnable-sentences))
+                                                             (nth % 1)
+                                                             (score-sentence learning-information (nth % 0))])))]
+    (->> (->> learning-information :learning-database :sentences-by-score)
+         (#(reducers/reduce (fn [xs x] (dissoc xs x)) % (map (fn [x] (nth x 0)) unlearnable-sentences)))
          (#(reducers/reduce (fn [xs x] (assoc xs (nth x 0) (nth x 2))) % learnable-sentences-with-score)))))
 
-(defn update-sentences-by-scores [learning-information learned-lemma]
-  (let [sentences-by-score (-> learning-information :learning-database :sentences-by-score)]
-    (->> (lemma->sentences (:text-database learning-information) learned-lemma)
-         (map #(identity [% (learnable? learning-information %)]))
-         (update-with-sentence-pairs learning-information))))
+(defn update-sentences-by-scores [learning-information sentence]
+  (->> (sentence->lemmas (:text-database learning-information) sentence)
+       (filter #(>= 3 (lemma->times-learned learning-information %)))
+       (mapcat #(lemma->sentences (:text-database learning-information) %))
+       set
+       (map #(identity [% (learnable? learning-information %)]))
+       (update-with-sentence-pairs learning-information)))
 
-(defn update-learning-database-with-learned-lemmas [{learning-database :learning-database :as  learning-information} [lemma & rem-lemmas]]
-  (if (nil? lemma) learning-database
-      (let [updated-sentences-by-scores (update-sentences-by-scores learning-information lemma)
-            updated-lemmas-by-score (dissoc (->> learning-database :lemmas-by-score) lemma)
-            updated-database (->Learning-database updated-sentences-by-scores updated-lemmas-by-score (:lemma->frequency learning-database))]
-        (recur (assoc learning-information :learning-database updated-database) rem-lemmas))))
+(defn update-learning-database-with-learned-sentence [{learning-database :learning-database :as  learning-information} sentence]
+  (let [updated-sentences-by-scores (update-sentences-by-scores learning-information sentence)
+        updated-lemmas-by-score (apply dissoc (:lemmas-by-score learning-database) (sentence->lemmas (:text-database learning-information) sentence))]
+    (->Learning-database updated-sentences-by-scores updated-lemmas-by-score (:lemma->frequency learning-database))))
 
 (defn update-times-learned [conjugation-to-times-learned conjugations]
   (reducers/reduce #(update %1 %2 (fnil inc 0)) conjugation-to-times-learned conjugations))
 
-(defn update-learning-order [learning-information sentence unlearned-lemmas score]
-  ;; Append all the learned (word, sentence, score) pair
+(defn update-learning-order
+  "Append all the learned (word, sentence, score) pairs"
+  [learning-information sentence unlearned-lemmas score]
   (reducers/reduce #(conj %1 (->Score-point %2 sentence score)) (->> learning-information :learning-progress :learning-order) unlearned-lemmas ))
 
 (defn count-lemmas-learned [learning-information]
@@ -156,7 +162,7 @@
         unlearned-lemmas (sentence->unlearned-lemmas learning-information sentence)
         message (str current-lemma-count " of " total-lemma-count ", " (set (map :raw unlearned-lemmas)) " "
                      (format "%.2f" (if (nil? score) 0.0 score)) " -> " (:raw sentence))]
-    (helper/print-if (or (zero? (mod current-lemma-count 100))
+    (helper/print-if (or (zero? (mod current-lemma-count 1))
                          (>= 100  current-lemma-count)
                          (= current-lemma-count total-lemma-count))
                      message)))
@@ -166,7 +172,7 @@
         updated-learning-order (update-learning-order learning-information sentence unlearned-lemmas score)
         updated-times-learned (update-times-learned (:conjugation-to-times-learned (:learning-progress learning-information)) (:words sentence))
         updated-progress (->Learning-progress updated-times-learned updated-learning-order)
-        updated-learning-database (update-learning-database-with-learned-lemmas (assoc learning-information :learning-progress updated-progress) unlearned-lemmas)]
+        updated-learning-database (update-learning-database-with-learned-sentence (assoc learning-information :learning-progress updated-progress) sentence)]
     (print-current-learning-status learning-information sentence score)
     (->Learning-information updated-progress updated-learning-database (:text-database learning-information) (:config learning-information))))
 
@@ -184,6 +190,7 @@
       (let [[top-sentence top-sentence-score] (first sentences-by-score)
             updated-learning-information (update-in learning-information [:learning-database :sentences-by-score] pop)]
         [top-sentence top-sentence-score updated-learning-information])
+
       (let [unlearned-lemma (get-a-unlearned-lemma learning-information)
             unlearned-lemma-sentence (Sentence. (str "NoSentence: " (:raw unlearned-lemma)) [] [(Conjugation. (:raw unlearned-lemma)) ]) ]
         (if (nil? unlearned-lemma) (throw (Exception. "Error: Trying to learn an unlearned lemma, when there are non left.")) nil)
@@ -194,12 +201,20 @@
         current-lemma-count (count-lemmas-learned learning-information)]
     (>= current-lemma-count total-lemma-count)))
 
+(defn- throw-learning-error [learning-information sentence]
+  (do (println "Could not learn sentence")
+      (pprint sentence)
+      (pprint (sentence->lemmas (:text-database learning-information) sentence))
+      (pprint (sentence->unlearned-lemmas learning-information sentence))
+      (throw (Exception. (str "Could not not learn sentence: " (prn sentence))))))
+
 (defn learn-top-sentence [learning-information]
   (if (finished-learning? learning-information) nil
-   (let [[top-sentence top-sentence-score updated-learning-information] (pop-top-sentence learning-information)]
+      (let [[top-sentence top-sentence-score updated-learning-information]
+            #_-> (pop-top-sentence learning-information)]
      (if (learnable? learning-information top-sentence)
        (learn-sentence updated-learning-information top-sentence top-sentence-score)
-       (throw (Exception. (str "Could not not learn top sentence: " top-sentence)))))))
+       (throw-learning-error learning-information top-sentence)))))
 
 (defn merge-frequencies [text-lemma-frequencies]
   (reducers/fold (partial merge-with +) text-lemma-frequencies))

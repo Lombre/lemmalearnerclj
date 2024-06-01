@@ -19,6 +19,11 @@
         (is (= (map :raw sentences)
                expected-sentences)))))
 
+
+(let [short-sentence (Sentence. "This sentence is short and learnable." [] [])
+      long-sentence (Sentence. "This is a long test sentence, that should be filtered out, because of its immense length which makes it basicly unlearnable." [] [])]
+  (filter-sentences-for-learning [long-sentence]))
+
 (deftest test-sentences-to-words
   (testing
       (let [words (sentences->words simple-sentences)

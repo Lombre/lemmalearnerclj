@@ -3,10 +3,10 @@
                                         ; (:import [testproject.textdatastructures Text Paragraph Sentence Conjugation Lemma])
   (:require
    [lemmalearnerclj.helper :refer :all]
+   [lemmalearnerclj.helper :as helper]
    [lemmalearnerclj.lemmatizer :as lemmatizer]
    [lemmalearnerclj.parser :as parser]
-   [lemmalearnerclj.textdatastructures]
-   [clojure.set :as set]))
+   [lemmalearnerclj.textdatastructures]))
 
 (require '[clojure.core.reducers :as reducers])
 
@@ -22,8 +22,9 @@
 
 (defn text->sentences [text]
   (->> text
-      (:paragraphs)
-      (mapcat :sentences)))
+       (:paragraphs)
+       (mapcat :sentences)
+       (distinct)))
 
 (defn directory->file-paths [directory-path]
   (map #(.getAbsolutePath %) (.listFiles (clojure.java.io/file directory-path))))
@@ -48,7 +49,8 @@
        (pmap #(->> % ;; get hashmap raw-word -> [sentence]
                    :words
                    (reducers/reduce (fn [xs x] (assoc xs x [%])) {})))
-       (reducers/fold (partial merge-with into))
+       ;; (merge-with into)
+       (helper/preduce (partial merge-with into))
        (doall)))
 
 (defn conjugations->lemmas [conjugation->lemma conjugations]
@@ -64,18 +66,24 @@
 
 (defn sentences->sentences-with-lemmas [conjugation->lemma sentences]
   (->> sentences
-       (map #(sentence->sentence-with-lemmas conjugation->lemma %))
+       (pmap #(sentence->sentence-with-lemmas conjugation->lemma %))
        doall))
+
+(defn filter-sentences-for-learning [sentences]
+  (->> sentences
+       (filter #(->> % :raw count (>= 70)))))
 
 (defn texts->text-database [{language :language} texts]
   (println "Converting to text database.")
   (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer language)
         sentences-with-lemmas (sentences->sentences-with-lemmas conjugation->lemma (texts->sentences texts))
-        conjugations (sentences->words sentences-with-lemmas)
+        filtered-sentences (filter-sentences-for-learning sentences-with-lemmas)
+        _ (println "Before filtering: " (count sentences-with-lemmas) ", after filtering: " (count filtered-sentences))
+        conjugations (sentences->words filtered-sentences)
         lemmas (conjugations->lemmas conjugation->lemma conjugations)
-        word->sentences (sentences->word->sentences sentences-with-lemmas)]
+        word->sentences (sentences->word->sentences filtered-sentences)]
     (println "Finished converting.")
-    (Textdatabase. texts sentences-with-lemmas conjugations lemmas word->sentences
+    (Textdatabase. texts filtered-sentences conjugations lemmas word->sentences
                    lemma->conjugations conjugation->lemma)))
 
 (defn directory->text-database [config directory]

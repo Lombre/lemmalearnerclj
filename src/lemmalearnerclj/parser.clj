@@ -1,8 +1,13 @@
 (ns lemmalearnerclj.parser ;  (:require [testproject.textdatabase])
-  (:require [lemmalearnerclj.textdatastructures]
-            [lemmalearnerclj.helper :as helper]
-            [clojure.set :as set])
-  (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence Conjugation]))
+  (:require
+   [lemmalearnerclj.textdatastructures]
+   [parallel.core :as p])
+  (:import
+   [lemmalearnerclj.textdatastructures
+    Conjugation
+    Paragraph
+    Sentence
+    Text]))
 
 ;; (require '[clojure.data.priority-map :refer [priority-map]])
 (require '[clojure.core.match :refer [match]])

@@ -1,18 +1,20 @@
 (ns lemmalearnerclj.helper
   (:require
    [clojure.core.reducers :as reducers]
-   [clojure.walk :as walk]
-   [parallel.core :as p]))
+   [clojure.pprint :as pprint]
+   [clojure.walk :as walk]))
 
 (defn record->map [record-collection]
   (walk/postwalk #(if (record? %) (into {} %) %) record-collection))
 
-(defn p-dac-reduce [f input-list & {:keys [partition-factor min-size] :or {partition-factor 4 min-size 1024}}]
-  (let [count-dlist (count input-list)]
-    (if (< count-dlist min-size) (reducers/fold f input-list)
-        (let [divided-and-conquored (pmap #(p-dac-reduce f % :partition-factor partition-factor :min-size min-size)
-                                          (partition (/ count-dlist partition-factor) (/ count-dlist partition-factor) nil input-list))]
-          (reducers/fold f divided-and-conquored)))))
+(defn preduce [f input-list]
+  (let [partition-factor 16
+        min-size 512
+        count-dlist (count input-list)]
+    (if (<= count-dlist min-size) (reducers/reduce f input-list)
+        (let [partitions (partition-all (/ count-dlist partition-factor) input-list)
+              divided-and-conquored (pmap #(preduce f %) partitions)]
+          (reducers/reduce f divided-and-conquored)))))
 
 (defn p-dac-map [f input-list & {:keys [partition-factor min-size] :or {partition-factor 4 min-size 1024}}]
   (let [count-dlist (count input-list)]
@@ -59,4 +61,8 @@
   (if condition
     (apply println messages)
     nil))
+
+(defn p-filter [f col]
+  (let [partitions (partition-all (/ (count col) 32) col)]
+    (flatten (pmap #(filter f %) partitions))))
 
