@@ -7,7 +7,8 @@
    [lemmalearnerclj.parser :as parser]
    [lemmalearnerclj.textdatabase :refer :all]
    [lemmalearnerclj.textdatastructures :refer :all]
-   [clojure.pprint :as pprint])
+   [clojure.pprint :as pprint]
+   [clojure.set :as set])
   (:import
    [lemmalearnerclj.textdatastructures Sentence Conjugation Lemma]))
 
@@ -15,47 +16,51 @@
 (def test-sentence2 (parser/parse-raw-sentence "Dette også det."))
 
 (def test-config
-  {:language "danish"})
+  {:language "danish"
+   :learning-config {:drop-off-factor 0.5
+                     :max-lemma-times-learned 3
+                     :max-lemmas-to-learn 1000}})
 
-(def test-text-database
-  (lemmalearnerclj.textdatabase/directory->text-database test-config "test/lemmalearnerclj/test_files/test_text_folder/"))
+(def test-text-db
+  (lemmalearnerclj.textdatabase/directory->text-db test-config "test/lemmalearnerclj/test_files/test_text_folder/"))
 
 (deftest test-sentence-to-lemmas
   (testing "Sentences gives correct lemmas"
-    (sentence->lemmas test-text-database test-sentence1)))
+    (sentence->lemmas test-text-db test-sentence1)))
 
-(defn raw-text->new-learning-information [raw-text]
+(defn raw-text->new-learn-info [raw-text]
   (->> raw-text
        (parser/parse-raw-text "test")
        list
-       (lemmalearnerclj.textdatabase/texts->text-database test-config)
-       (text-database->new-learning-information test-config)))
+       (lemmalearnerclj.textdatabase/texts->text-db test-config)
+       (text-db->new-learn-info test-config)))
 
-(def large-learning-information
-  (directory->new-learning-information test-config "test/lemmalearnerclj/test_files/larger_texts/"))
+(def large-learn-info
+  (directory->new-learn-info test-config "test/lemmalearnerclj/test_files/larger_texts/"))
 
-(def true-large-learning-information
-  (directory->new-learning-information {:language "english"} "test/lemmalearnerclj/test_files/larger_texts/"))
+(def true-large-learn-info
+  (directory->new-learn-info (assoc test-config :language "english") "test/lemmalearnerclj/test_files/larger_texts/"))
 
 (def learned-true-large-text
-  (learn-all-lemmas true-large-learning-information))
+  (learn-all-lemmas true-large-learn-info))
 
 (def learned-large-text
-  (learn-all-lemmas large-learning-information))
+  (learn-all-lemmas large-learn-info))
+
 
 (deftest test-correct-initialized-sentences-by-score
   (testing ""
-    (let [simple-information (raw-text->new-learning-information "Lære. Kage. Kage test.")
-          learnable-sentences (->> simple-information :learning-database :sentences-by-score seq (map #(identity [(:raw (first %)) (second %)])))]
+    (let [simple-information (raw-text->new-learn-info "Lære. Kage. Kage test.")
+          learnable-sentences (->> simple-information :learn-db :sentences-by-score seq (map #(identity [(:raw (first %)) (second %)])))]
       (is (= (seq [["Kage." -2.0] ["Lære." -1.0]])
              learnable-sentences)))))
 
 (deftest test-learn-sentence-updates-sentences-by-score
   (testing ""
-    (let [simple-information (raw-text->new-learning-information "Sætning. Sætning et. Sætning to.")
-          start-learnable-sentences (->> simple-information :learning-database :sentences-by-score seq (map first) (map :raw) set)
+    (let [simple-information (raw-text->new-learn-info "Sætning. Sætning et. Sætning to.")
+          start-learnable-sentences (->> simple-information :learn-db :sentences-by-score seq (map first) (map :raw) set)
           learned-sentence (learn-top-sentence simple-information)
-          learnable-sentences (->> learned-sentence :learning-database :sentences-by-score seq (map first) (map :raw) set)]
+          learnable-sentences (->> learned-sentence :learn-db :sentences-by-score seq (map first) (map :raw) set)]
       (is (= #{"Sætning."}
              start-learnable-sentences))
       (is (= #{"Sætning et." "Sætning to."}
@@ -63,66 +68,70 @@
 
 (deftest test-learn-sentence-updates-sentences-by-score
   (testing ""
-    (let [simple-information (raw-text->new-learning-information "Test. Dette er en test sætning.")
+    (let [simple-information (raw-text->new-learn-info "Test. Dette er en test sætning.")
           learned-sentence (learn-top-sentence simple-information)
-          lemmas-by-score-before (->> simple-information :learning-database :lemmas-by-score)
-          lemmas-by-score-after (->> learned-sentence :learning-database :lemmas-by-score)]
+          lemmas-by-score-before (->> simple-information :learn-db :lemmas-by-score)
+          lemmas-by-score-after (->> learned-sentence :learn-db :lemmas-by-score)]
       (is (= (dissoc lemmas-by-score-before (Lemma. "test"))
              lemmas-by-score-after)))))
 
 (deftest test-learn-word-updates-sentences-by-score
   (testing ""
-    (let [simple-information (raw-text->new-learning-information "Kan. Kunne. Kan læres.")
+    (let [simple-information (raw-text->new-learn-info "Kan. Kunne. Kan læres.")
           learned-sentence (learn-top-sentence simple-information)
-          learnable-sentences (->> learned-sentence :learning-database :sentences-by-score seq (map first) (map :raw) set)]
+          _ (learn-top-sentence learned-sentence)
+          learnable-sentences (->> learned-sentence :learn-db :sentences-by-score seq (map first) (map :raw) set)]
       (is (= #{"Kan læres."}
              learnable-sentences)))))
 
-(deftest test-text-database-to-words-by-frequencies
+(deftest test-text-db-to-words-by-frequencies
   (testing "Words do not have the correct frequencies"
-    (let [word->frequency (text-database->lemma->frequency test-text-database)]
+    (let [word->frequency (text-db->lemma->frequency test-text-db)]
         (is (= (helper/record->map word->frequency)
              {{:raw "denne"} -2, {:raw "sætning"} -2, {:raw "et"} -2, {:raw "race"} -2, {:raw "endnu"} -1})))))
 
 (deftest test-sentences-to-words-by-frequencies
   (testing "Words do not have the correct frequencies"
-    (let [lemmas-by-frequencies (->> test-text-database
+    (let [lemmas-by-frequencies (->> test-text-db
                                      :sentences
-                                     (sentences->lemmas-by-frequency test-text-database))]
+                                     (sentences->lemmas-by-frequency test-text-db))]
       (is (= (helper/record->map lemmas-by-frequencies)
              {{:raw "denne"} -2, {:raw "sætning"} -2, {:raw "en"} -2, {:raw "race"} -2, {:raw "endnu"} -1}))
       )))
 
-(deftest test-text-database-to-words-by-frequencies
+(deftest test-text-db-to-words-by-frequencies
   (testing "Words do not have the correct frequencies"
-    (let [word->frequency (text-database->lemma->frequency test-text-database)]
+    (let [word->frequency (text-db->lemma->frequency test-text-db)]
         (is (= (update-keys word->frequency :raw)
                {"race" -2, "denne" -2, "en" -2, "sætning" -2, "endnu" -1})))))
 
 (deftest test-learned-sentences-correct
   (testing ""
-    (let [learned-sentences (learn-sentences large-learning-information [test-sentence1 test-sentence2] [nil nil])
-          learned-sentence1 (learn-sentence large-learning-information test-sentence1 nil)
+    (let [mock-learning-information (raw-text->new-learn-info "Dette er det. Dette er også det.")
+          learned-sentences (learn-sentences mock-learning-information [test-sentence1 test-sentence2] [nil nil])
+          learned-sentence1 (learn-sentence mock-learning-information test-sentence1 nil)
           learned-sentence2 (learn-sentence learned-sentence1 test-sentence2 nil)]
-          ;word-to-times-learned (update-keys (->> learned-sentences :learning-progress :word-to-times-learned) :raw) ]
+          ;word-to-times-learned (update-keys (->> learned-sentences :learn-prog :word-to-times-learned) :raw) ]
       (is (= learned-sentence2
              learned-sentences)))))
 
 (deftest test-learned-sentences
   (testing ""
-    (let [learned-sentences (learn-sentences large-learning-information [test-sentence1 test-sentence2] [nil nil])
-          conjugation-to-times-learned (update-keys (->> learned-sentences :learning-progress :conjugation-to-times-learned) :raw) ]
-      (is (= {"dette" 2, "det" 2, "er" 1, "også" 1} conjugation-to-times-learned))
+    (let [mock-learning-information (raw-text->new-learn-info "Dette er det. Dette er også det.")
+          learned-sentences (learn-sentences mock-learning-information [test-sentence1 test-sentence2] [-1.0 -2.0])
+          conj->#learned (update-keys (->> learned-sentences :learn-prog :conj->#learned) :raw) ]
+      (is (= {"dette" 2, "det" 2, "er" 1, "også" 1} conj->#learned))
       (is (= 4 (count-lemmas-learned learned-sentences)))
-      (is (= (->> large-learning-information :learning-database :words-by-score count )
-             (->> learned-sentences :learning-database :words-by-score count))))))
+      (is (= (->> large-learn-info :learn-db :words-by-score count )
+             (->> learned-sentences :learn-db :words-by-score count))))))
 
 (deftest test-learnable
   (testing ""
-    (let [learned-no-sentence large-learning-information
-          learned-first-sentence  (learn-sentence learned-no-sentence test-sentence1 nil)
+    (let [learned-no-sentence (raw-text->new-learn-info "Dette er det. Dette er også det.")
+          learned-first-sentence  (learn-sentence learned-no-sentence test-sentence1 -100.0)
           learned-second-sentence (learn-sentence learned-first-sentence test-sentence2 nil)
-          second-sentence-learnable (learnable? learned-first-sentence test-sentence2)]
+          second-sentence-learnable (learnable? learned-first-sentence test-sentence2)
+          ]
       (is (not (learnable? learned-no-sentence test-sentence1)))
       (is (not (learnable? learned-no-sentence test-sentence2)))
       (is (not (learnable? learned-first-sentence test-sentence1)))
@@ -131,15 +140,15 @@
 
 (deftest test-get-a-lemma
   (testing "Did not return a lemma word"
-    (let [unlearned-lemma (get-a-unlearned-lemma large-learning-information)]
+    (let [unlearned-lemma (get-a-unlearned-lemma large-learn-info)]
       (is (not (nil? unlearned-lemma))))))
 
 
 (deftest test-all-lemmas-learned-after-finished-learning
   (testing ""
-    (let [all-lemmas (->> large-learning-information :text-database :lemmas set)
+    (let [all-lemmas (->> large-learn-info :text-db :lemmas set)
           learned-words (->> learned-large-text
-                             :learning-progress
+                             :learn-prog
                              :learning-order
                              (map :lemma)
                              set)]
@@ -148,3 +157,5 @@
 (deftest test-all-words-learned-greedily
   (testing ""
     (is (= 1 1))))
+
+;;

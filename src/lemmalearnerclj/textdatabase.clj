@@ -73,7 +73,7 @@
   (->> sentences
        (filter #(->> % :raw count (>= 70)))))
 
-(defn texts->text-database [{language :language} texts]
+(defn texts->text-db [{language :language} texts]
   (println "Converting to text database.")
   (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer language)
         sentences-with-lemmas (sentences->sentences-with-lemmas conjugation->lemma (texts->sentences texts))
@@ -86,8 +86,8 @@
     (Textdatabase. texts filtered-sentences conjugations lemmas word->sentences
                    lemma->conjugations conjugation->lemma)))
 
-(defn directory->text-database [config directory]
+(defn directory->text-db [config directory]
   (println "Parsing texts")
   (let [texts (doall (parse-texts-in-directory directory))]
     (println "Finished parsing texts")
-    (texts->text-database config texts)))
+    (texts->text-db config texts)))

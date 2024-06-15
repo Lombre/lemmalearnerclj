@@ -1,7 +1,8 @@
 (ns lemmalearnerclj.parser-test
   (:require [lemmalearnerclj.parser :refer :all]
             [lemmalearnerclj.textdatastructures :refer :all]
-            [clojure.test :refer :all])
+            [clojure.test :refer :all]
+            [lemmalearnerclj.helper :as helper])
   (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence Conjugation]))
 
 (deftest parse-simple-word
@@ -35,18 +36,34 @@
       (is (= output-paragraph (->Paragraph input-paragraph [(->Sentence "This is." [] #{(->Conjugation "this") (->Conjugation "is")})
                                                             (->Sentence "a paragraph." [] #{(->Conjugation "a") (->Conjugation"paragraph")})]))))))
 
+(deftest parse-nested-sentence-handles-ending-punctuation
+  (testing "Could not handle ending punctuation"
+    (is (= #{{:raw "an"}
+             {:raw "argument"}
+             {:raw "she"}
+             {:raw "had"}
+             {:raw "and"}
+             {:raw "‘you"}}
+           (->> "‘You and she had an argument?’"
+                parse-raw-paragraph
+                :sentences
+                first
+                :words
+                (map helper/record->map)
+                set)))))
+
 (deftest parse-sentence-with-nested-sentence
   (testing "Incorrect-handeling-of-nested-sentence"
-    (let [input-sentence   "tests \"cake tests\" are good."
+    (let [input-sentence   "tests \"cake tests.\" are good."
           output-paragraph (parse-raw-paragraph input-sentence)]
-        (is (= output-paragraph
-            (->Paragraph "tests \"cake tests\" are good.",
-                [(->Sentence "tests \"cake tests\" are good.",
-                    [(->Paragraph "cake tests",
-                    [(->Sentence "cake tests" [] #{(->Conjugation "cake") (->Conjugation "tests")})])
-                    ]
-                    #{(->Conjugation "cake") (->Conjugation "tests") (->Conjugation "are") (->Conjugation "good")}
-            )]))))))
+      (is (= output-paragraph
+             (->Paragraph "tests \"cake tests.\" are good.",
+                          [(->Sentence "tests \"cake tests.\" are good.",
+                                       [(->Paragraph "cake tests.",
+                                                     [(->Sentence "cake tests." [] #{(->Conjugation "cake") (->Conjugation "tests")})])
+                                        ]
+                                       #{(->Conjugation "cake") (->Conjugation "tests") (->Conjugation "are") (->Conjugation "good")}
+                                       )]))))))
 
 
 (deftest parse-single-line-text

@@ -44,7 +44,8 @@
   (contains? #{\space \- \— \’ \'} char))
 
 (defn at-end-of-word? [cur-char]
-  (or (word-seperator? cur-char) (contains? all-quote-chars cur-char) (contains? other-punctuation cur-char)))
+  (or (word-seperator? cur-char) (punctuation? cur-char)
+      (contains? all-quote-chars cur-char) (contains? other-punctuation cur-char)))
 
 (defn at-end-of-sentence? [cur-char next-char]
   (or (and (punctuation? cur-char) (or (= \space next-char) (= nil next-char))) (= nil cur-char)))
@@ -96,19 +97,22 @@
    (let [cur-char  (first remaining-raw-paragraph)
          next-char (second remaining-raw-paragraph)]
      (cond (nil? cur-char)
-           #_=> (let [paragraph-sentences (conj-if (not (empty? current-sentence)) sentences (parse-raw-sentence (reverse current-sentence)))]
+           (let [paragraph-sentences (conj-if (not (empty? current-sentence))
+                                                   sentences (parse-raw-sentence (reverse current-sentence)))]
                   (Paragraph. "" paragraph-sentences))
            (at-end-of-sentence? cur-char next-char)
-           #_=> (let [new-sentence (parse-raw-sentence (reverse (cons cur-char current-sentence)))]
+           (let [new-sentence (parse-raw-sentence (reverse (cons cur-char current-sentence)))]
                   (recur (rest remaining-raw-paragraph) (conj sentences new-sentence) []))
            (at-start-of-quote? cur-char next-char) ;; Parse until the end of the quote
-           #_=> (let [[quoted-part paragraph-after-quoted-part] (find-end-of-quote (rest remaining-raw-paragraph) cur-char (get quote-starters cur-char))
-                      parsed-sub-paragraph (parse-raw-paragraph quoted-part)
-                      current-sentence-with-subsentence (concat [(get quote-starters cur-char)] [parsed-sub-paragraph] [cur-char] current-sentence)]
-                  ;; Continue from there
-                  (if (nil? parsed-sub-paragraph)
-                    nil ;; Sub paragraph could not be parsed properly
-                    (parse-raw-paragraph paragraph-after-quoted-part sentences current-sentence-with-subsentence)))
+           (let [[quoted-part paragraph-after-quoted-part]
+                 (find-end-of-quote (rest remaining-raw-paragraph) cur-char (get quote-starters cur-char))
+                 parsed-sub-paragraph (parse-raw-paragraph quoted-part)
+                 current-sentence-with-subsentence (concat [(get quote-starters cur-char)]
+                                                           [parsed-sub-paragraph] [cur-char] current-sentence)]
+             ;; Continue from there
+             (if (nil? parsed-sub-paragraph)
+               nil ;; Sub paragraph could not be parsed properly
+               (parse-raw-paragraph paragraph-after-quoted-part sentences current-sentence-with-subsentence)))
            :else ;; Normal char
            #_=> (recur (rest remaining-raw-paragraph) sentences (cons cur-char current-sentence))))))
 

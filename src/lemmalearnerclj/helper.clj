@@ -16,13 +16,6 @@
               divided-and-conquored (pmap #(preduce f %) partitions)]
           (reducers/reduce f divided-and-conquored)))))
 
-(defn p-dac-map [f input-list & {:keys [partition-factor min-size] :or {partition-factor 4 min-size 1024}}]
-  (let [count-dlist (count input-list)]
-    (if (< count-dlist min-size) (pmap f input-list)
-        (let [divided (partition (/ count-dlist partition-factor) (/ count-dlist partition-factor) nil input-list)
-              divided-and-conquored (pmap #(p-dac-map f % :partition-factor partition-factor :min-size min-size) divided)]
-          (doall (flatten divided-and-conquored))))))
-
 (defn p-filter [f list]
   (->> list
        (pmap #(identity [% (f %)]))
@@ -66,3 +59,20 @@
   (let [partitions (partition-all (/ (count col) 32) col)]
     (flatten (pmap #(filter f %) partitions))))
 
+
+(defn getx
+  "Like two-argument get, but throws an exception if the key is
+   not found."
+  [m k]
+  (let [e (get m k ::sentinel)]
+    (if-not (= e ::sentinel)
+      e
+      (throw (ex-info (str "Missing required key: " (with-out-str (println k)))
+                      {:map m :key k})))))
+
+
+(defn getx-in
+  "Like two-argument get-in, but throws an exception if the key is
+   not found."
+  [m ks]
+  (reduce getx m ks))

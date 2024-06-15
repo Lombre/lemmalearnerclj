@@ -19,10 +19,12 @@
         (is (= (map :raw sentences)
                expected-sentences)))))
 
-
-(let [short-sentence (Sentence. "This sentence is short and learnable." [] [])
-      long-sentence (Sentence. "This is a long test sentence, that should be filtered out, because of its immense length which makes it basicly unlearnable." [] [])]
-  (filter-sentences-for-learning [long-sentence]))
+(deftest test-filter-sentences-for-learning-filters-long-sentences
+  (testing
+      (let [short-sentence (Sentence. "This sentence is short and learnable." [] [])
+            long-sentence (Sentence. "This is a long test sentence, that should be filtered out, because of its immense length which makes it basicly unlearnable." [] [])]
+        (is (= (list short-sentence)
+             (filter-sentences-for-learning [short-sentence long-sentence]))))))
 
 (deftest test-sentences-to-words
   (testing
