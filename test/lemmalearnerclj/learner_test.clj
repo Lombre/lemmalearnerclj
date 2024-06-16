@@ -12,14 +12,29 @@
   (:import
    [lemmalearnerclj.textdatastructures Sentence Conjugation Lemma]))
 
-(def test-sentence1 (parser/parse-raw-sentence "Dette er det."))
-(def test-sentence2 (parser/parse-raw-sentence "Dette også det."))
+
+
+(def parse-config
+  {:punctuation #{\. \! \?}
+   :quote-pairs {\" \"
+                 \“ \”
+                 \' \'
+                 \( \)
+                 \[ \]
+                 \¿ \?
+                 \« \»
+                 \¡ \!}
+   :other-punctuation #{\. \; \:}})
 
 (def test-config
   {:language "danish"
+   :parsing-config parse-config
    :learning-config {:drop-off-factor 0.5
                      :max-lemma-times-learned 3
                      :max-lemmas-to-learn 1000}})
+
+(def test-sentence1 (parser/parse-raw-sentence parse-config "Dette er det."))
+(def test-sentence2 (parser/parse-raw-sentence parse-config "Dette også det."))
 
 (def test-text-db
   (lemmalearnerclj.textdatabase/directory->text-db test-config "test/lemmalearnerclj/test_files/test_text_folder/"))
@@ -30,7 +45,7 @@
 
 (defn raw-text->new-learn-info [raw-text]
   (->> raw-text
-       (parser/parse-raw-text "test")
+       (parser/parse-raw-text parse-config "test")
        list
        (lemmalearnerclj.textdatabase/texts->text-db test-config)
        (text-db->new-learn-info test-config)))
@@ -52,7 +67,7 @@
   (testing ""
     (let [simple-information (raw-text->new-learn-info "Lære. Kage. Kage test.")
           learnable-sentences (->> simple-information :learn-db :sentences-by-score seq (map #(identity [(:raw (first %)) (second %)])))]
-      (is (= (seq [["Kage." -2.0] ["Lære." -1.0]])
+      (is (= (seq [["Kage." 2.0] ["Lære." 1.0]])
              learnable-sentences)))))
 
 (deftest test-learn-sentence-updates-sentences-by-score
@@ -88,7 +103,7 @@
   (testing "Words do not have the correct frequencies"
     (let [word->frequency (text-db->lemma->frequency test-text-db)]
         (is (= (helper/record->map word->frequency)
-             {{:raw "denne"} -2, {:raw "sætning"} -2, {:raw "et"} -2, {:raw "race"} -2, {:raw "endnu"} -1})))))
+             {{:raw "denne"} 2, {:raw "sætning"} 2, {:raw "et"} 2, {:raw "race"} 2, {:raw "endnu"} 1})))))
 
 (deftest test-sentences-to-words-by-frequencies
   (testing "Words do not have the correct frequencies"
@@ -96,14 +111,14 @@
                                      :sentences
                                      (sentences->lemmas-by-frequency test-text-db))]
       (is (= (helper/record->map lemmas-by-frequencies)
-             {{:raw "denne"} -2, {:raw "sætning"} -2, {:raw "en"} -2, {:raw "race"} -2, {:raw "endnu"} -1}))
+             {{:raw "denne"} 2, {:raw "sætning"} 2, {:raw "en"} 2, {:raw "race"} 2, {:raw "endnu"} 1}))
       )))
 
 (deftest test-text-db-to-words-by-frequencies
   (testing "Words do not have the correct frequencies"
     (let [word->frequency (text-db->lemma->frequency test-text-db)]
         (is (= (update-keys word->frequency :raw)
-               {"race" -2, "denne" -2, "en" -2, "sætning" -2, "endnu" -1})))))
+               {"race" 2, "denne" 2, "en" 2, "sætning" 2, "endnu" 1})))))
 
 (deftest test-learned-sentences-correct
   (testing ""

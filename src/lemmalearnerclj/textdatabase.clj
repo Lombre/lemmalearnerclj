@@ -29,10 +29,10 @@
 (defn directory->file-paths [directory-path]
   (map #(.getAbsolutePath %) (.listFiles (clojure.java.io/file directory-path))))
 
-(defn parse-texts-in-directory [directory]
+(defn parse-texts-in-directory [parse-config directory]
   (->> directory
        (directory->file-paths)
-       (pmap #(parser/text-path->text %))))
+       (pmap #(parser/text-path->text parse-config %))))
 
 (defn texts->sentences [texts]
   (->> texts
@@ -49,7 +49,6 @@
        (pmap #(->> % ;; get hashmap raw-word -> [sentence]
                    :words
                    (reducers/reduce (fn [xs x] (assoc xs x [%])) {})))
-       ;; (merge-with into)
        (helper/preduce (partial merge-with into))
        (doall)))
 
@@ -88,6 +87,6 @@
 
 (defn directory->text-db [config directory]
   (println "Parsing texts")
-  (let [texts (doall (parse-texts-in-directory directory))]
+  (let [texts (doall (parse-texts-in-directory (getx config :parsing-config) directory))]
     (println "Finished parsing texts")
     (texts->text-db config texts)))
