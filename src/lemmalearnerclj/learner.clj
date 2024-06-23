@@ -20,12 +20,17 @@
 
 (defrecord Learning-progress [conj->#learned learning-order])
 
-(defrecord Learning-database [sentences-by-score lemmas-by-score lemma->frequency])
+(defrecord Learning-database [sentences-by-score lemmas-by-score lemma->frequency conjugation->frequency])
 
 (defrecord Learning-information [learn-prog learn-db text-db config])
 
-(defn conjugation->lemma [text-db conjugation]
-  (getx (:conjugation->lemma text-db) conjugation ))
+(defn is-nonsense-conjugation? [text-db conjugation]
+  (nil? (get (:conjugation->lemma text-db) conjugation)))
+
+(defn conjugation->lemma [text-db conjugation & {:keys [nilable] :or {nilable false}}]
+  (if (not nilable)
+    (getx (:conjugation->lemma text-db) conjugation )
+    (get (:conjugation->lemma text-db) conjugation)))
 
 (defn sentence->lemmas [text-db sentence]
   (if (contains? sentence :lemmas)
@@ -48,7 +53,7 @@
   ([learn-info lemma] (lemma->times-learned (:learn-prog learn-info) (:text-db learn-info) lemma))
   ([learn-prog text-db lemma]
    (->> lemma
-        (getx (:lemma->conjugations text-db))
+        (get (:lemma->conjugations text-db))
         (map #(conjugation->times-learned learn-prog %))
         (reduce +))))
 
@@ -71,6 +76,12 @@
 (defn text-db->lemma->frequency [text-db]
   (sentences->lemmas-by-frequency text-db (:sentences text-db)))
 
+(defn text-db->conjugation->frequency [text-db]
+  (->> (:sentences text-db)
+       (mapcat :words)
+       p/frequencies
+       (clojure.core/reduce-kv #(assoc %1 %2 %3) (priority-map-by >))))
+
 (defn learnable? [learn-info sentence]
   (= (count (sentence->unlearned-lemmas learn-info sentence))
      1))
@@ -84,12 +95,28 @@
          (* (/ (Math/log (lemma->frequency lemma 0.0)) (Math/log 2.0))
             (Math/pow (:drop-off-factor learning-config) times-learned ))))))
 
+(defn score-by-lemma-and-conjugation-frequency
+  ([{:keys [config learn-db learn-prog text-db]} conjugation]
+   #_-> (score-by-lemma-and-conjugation-frequency (:learning-config config) (:lemma->frequency learn-db) (:conjugation->frequency learn-db) text-db learn-prog conjugation))
+  ([learning-config lemma->frequency conjugation->frequency text-db learn-prog conjugation]
+   (let [lemma (conjugation->lemma text-db conjugation :nilable true)
+         lemma-times-learned (lemma->times-learned learn-prog text-db lemma)
+         conjugation-times-learned (conjugation->times-learned text-db conjugation)]
+     (if (is-nonsense-conjugation? text-db conjugation) 0.0
+         (+ (if (> lemma-times-learned (getx learning-config :max-lemma-times-learned)) 0.0
+                (* (/ (Math/log (lemma->frequency lemma 0.0)) (Math/log 2.0))
+                   (Math/pow (:drop-off-factor learning-config) lemma-times-learned)))
+            (if (> conjugation-times-learned (getx learning-config :max-conjugation-times-learned)) 0.0
+                (* (/ (Math/log 2.0) (Math/log 2.0))
+                   (Math/pow (:drop-off-factor learning-config) lemma-times-learned))))))))
+
 (defn score-sentence
   ([{config :config l-prog :learn-prog t-db :text-db l-db :learn-db} sentence]
-   #_-> (score-sentence config (:lemma->frequency l-db) t-db l-prog sentence))
-  ([config lemma->frequency text-db learn-prog sentence]
-   (->> (sentence->lemmas text-db sentence)
-        (map #(score-by-lemma-frequency (getx config :learning-config) lemma->frequency text-db learn-prog %))
+   #_-> (score-sentence config (:lemma->frequency l-db) (:conjugation->frequency l-db) t-db l-prog sentence))
+  ([config lemma->frequency conjugation->frequency text-db learn-prog sentence]
+   (->> (:words sentence)
+        ;; distinct
+        (map #(score-by-lemma-and-conjugation-frequency (getx config :learning-config) lemma->frequency conjugation->frequency text-db learn-prog %))
         (reducers/reduce +))))
 
 (defn sentences->sentences-by-score [learn-info sentences]
@@ -100,6 +127,7 @@
 
 (defn text-db->learn-db [config text-db]
   (let [lemmas-by-frequency (text-db->lemma->frequency text-db)
+        conjugations-by-frequency (text-db->conjugation->frequency text-db)
         lemmas-by-score lemmas-by-frequency
         sentences-by-score (sentences->sentences-by-score
                             (->Learning-information (->Learning-progress {} [])
@@ -107,7 +135,7 @@
                                                     text-db
                                                     config)
                             (:sentences text-db))]
-    (->Learning-database sentences-by-score lemmas-by-score lemmas-by-frequency)))
+    (->Learning-database sentences-by-score lemmas-by-score lemmas-by-frequency conjugations-by-frequency)))
 
 (defn update-with-sentence-pairs [learn-info sentence-learned-pairs]
   (let [learnable-sentences (filter #(nth % 1) sentence-learned-pairs)
@@ -117,22 +145,34 @@
                                                               (nth % 1)
                                                               (score-sentence learn-info (nth % 0))])))]
     (->> (->> learn-info :learn-db :sentences-by-score)
-         (#(reducers/reduce (fn [xs x] (dissoc xs x)) % (pmap (fn [x] (nth x 0)) unlearnable-sentences)))
+         (#(reducers/reduce (fn [xs x] (dissoc xs (nth x 0))) % unlearnable-sentences))
          (#(reducers/reduce (fn [xs x] (assoc xs (nth x 0) (nth x 2))) % learnable-sentences-with-score)))))
+
+(defn conjugation-learned-max-times? [learn-info conjugation]
+  (let [max-times (->> learn-info :config :learning-config :max-conjugation-times-learned (+ 1))
+        cur-times (get (->> learn-info :learn-prog :conj->#learned) conjugation 0)]
+    (or (nil? cur-times) (< max-times cur-times))))
+
+(defn lemma-learned-max-times? [learn-info lemma]
+  (or (nil? lemma)
+      (< (->> learn-info :config :learning-config :max-lemma-times-learned (+ 1))
+         (lemma->times-learned learn-info lemma))))
 
 (defn update-sentences-by-scores [learn-info sentence]
   (->> (sentence->lemmas (:text-db learn-info) sentence)
-       (filter #(>= (->> learn-info :config :learning-config :max-lemma-times-learned (+ 1))
-                    (lemma->times-learned learn-info %)))
-       (mapcat #(lemma->sentences (:text-db learn-info) %))
+       (mapcat #(getx (->> learn-info :text-db :lemma->conjugations) %)) ;conjugations of all lemmas in sentence
        set
+       (filter #(not (and (conjugation-learned-max-times? learn-info %)
+                          (lemma-learned-max-times? learn-info (conjugation->lemma (:text-db learn-info) % :nilable true)))))
+       (mapcat #(get (->> learn-info :text-db :conjugation->sentences ) %))
+       #_set
        (pmap #(identity [% (learnable? learn-info %)]))
        (update-with-sentence-pairs learn-info)))
 
 (defn update-learn-db-with-learned-sentence [{learn-db :learn-db text-db :text-db :as learn-info} sentence]
   (let [updated-sentences-by-scores (update-sentences-by-scores learn-info sentence)
         updated-lemmas-by-score (apply dissoc (:lemmas-by-score learn-db) (sentence->lemmas text-db sentence))]
-    (->Learning-database updated-sentences-by-scores updated-lemmas-by-score (:lemma->frequency learn-db))))
+    (->Learning-database updated-sentences-by-scores updated-lemmas-by-score (:lemma->frequency learn-db) (:conjugation-frequency learn-db))))
 
 (defn update-times-learned [conj->#learned conjugations]
   (reducers/reduce #(update %1 %2 (fnil inc 0)) conj->#learned conjugations))
@@ -151,11 +191,17 @@
         unlearned-lemmas (sentence->unlearned-lemmas learn-info sentence)
         message (str current-lemma-count " of " total-lemma-count ", " (set (map :raw unlearned-lemmas)) " "
                      (format "%.2f" (if (nil? score) 0.0 score)) " -> " (:raw sentence) "\n\t"
-                     (str/join " " (map #(list [(:raw %)
-                                                (lemma->times-learned learn-info %)
-                                                (getx (->> learn-info :learn-db :lemma->frequency) %)
-                                                (format "%.2f" (score-by-lemma-frequency learn-info %))])
-                                        (sentence->lemmas (:text-db learn-info) sentence))))]
+                     (str/join " " (map #(if (not (contains? (->> learn-info :text-db :conjugation->lemma) %)) (:raw %)
+                                             (let [lemma (conjugation->lemma (:text-db learn-info) %)]
+                                               (list [(:raw lemma)
+                                                      (:raw %)
+                                                      (lemma->times-learned learn-info lemma)
+                                                      (get (->> learn-info :learn-prog :conj->#learned) %)
+                                                      (get (->> learn-info :learn-db :lemma->frequency) lemma)
+                                                      (get (->> learn-info :learn-db :conjugation->frequency) %)
+                                                      (format "%.2f" (score-by-lemma-frequency learn-info lemma))])))
+                                        (:words sentence)
+                                        #_(sentence->lemmas (:text-db learn-info) sentence))))]
     (print-if (or (zero? (mod current-lemma-count 100))
                   (>= 600  current-lemma-count)
                   (= current-lemma-count total-lemma-count)

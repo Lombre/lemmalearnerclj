@@ -12,8 +12,6 @@
   (:import
    [lemmalearnerclj.textdatastructures Sentence Conjugation Lemma]))
 
-
-
 (def parse-config
   {:punctuation #{\. \! \?}
    :quote-pairs {\" \"
@@ -31,7 +29,8 @@
    :parsing-config parse-config
    :learning-config {:drop-off-factor 0.5
                      :max-lemma-times-learned 3
-                     :max-lemmas-to-learn 1000}})
+                     :max-conjugation-times-learned 2
+                     :max-lemmas-to-learn 10000}})
 
 (def test-sentence1 (parser/parse-raw-sentence parse-config "Dette er det."))
 (def test-sentence2 (parser/parse-raw-sentence parse-config "Dette også det."))
@@ -62,10 +61,9 @@
 (def learned-large-text
   (learn-all-lemmas large-learn-info))
 
-
 (deftest test-correct-initialized-sentences-by-score
   (testing ""
-    (let [simple-information (raw-text->new-learn-info "Lære. Kage. Kage test.")
+    (let [simple-information (raw-text->new-learn-info "Lære. Kage. Kage test. Kage lære. Kage testen.")
           learnable-sentences (->> simple-information :learn-db :sentences-by-score seq (map #(identity [(:raw (first %)) (second %)])))]
       (is (= (seq [["Kage." 2.0] ["Lære." 1.0]])
              learnable-sentences)))))

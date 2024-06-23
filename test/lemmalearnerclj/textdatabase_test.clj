@@ -6,8 +6,19 @@
             [clojure.set])
   (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence Conjugation]))
 
+(def parsing-config {:punctuation #{\. \! \?}
+                    :quote-pairs {\" \"
+                                  \“ \”
+                                  \' \'
+                                  \( \)
+                                  \[ \]
+                                  \¿ \?
+                                  \« \»
+                                  \¡ \!}
+                    :other-punctuation #{\. \; \:}})
+
 (def simple-text
-  (parser/parse-raw-text "test" "This is a line.\n And another line."))
+  (parser/parse-raw-text parsing-config "test" "This is a line.\n And another line."))
 
 (def simple-sentences
   (texts->sentences [simple-text]))
