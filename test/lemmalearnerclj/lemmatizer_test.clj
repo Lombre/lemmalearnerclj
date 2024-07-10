@@ -58,3 +58,17 @@
           _ (save-lemma->conjugations "test/two-words" lemma->conjugations)
           loaded-lemma->words (load-saved-lemma-to-words-file "test/two-words")]
       (is (= lemma->conjugations loaded-lemma->words)))))
+
+
+(deftest test-update-lemmatizer-with-personal-dictionary
+  (testing ""
+    (do
+      (is (= {:lemma->conjugations {3 #{1 4}} :conjugation->lemma {1 3 4 3}}
+             (update-lemmatizer-with-personal-dictionary {} {:lemma->conjugations {3 #{1 4}} :conjugation->lemma {1 3 4 3}})))
+      (is (= {:lemma->conjugations {3 #{4} 2 #{1 2}} :conjugation->lemma {1 2 4 3 2 2}}
+             (update-lemmatizer-with-personal-dictionary {1 2} {:lemma->conjugations {3 #{1 4}} :conjugation->lemma {1 3 4 3}})))
+      (is (= {:lemma->conjugations {3 #{4} 1 #{1 2}} :conjugation->lemma {2 1 4 3 1 1}}
+             (update-lemmatizer-with-personal-dictionary {2 1} {:lemma->conjugations {3 #{4} 2 #{1 2}} :conjugation->lemma {1 2 4 3 2 2}})))
+      )))
+
+(update-lemmatizer-with-personal-dictionary {1 2} {:lemma->conjugations {3 #{1 4}} :conjugation->lemma {1 3 4 3}})

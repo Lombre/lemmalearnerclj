@@ -4,7 +4,8 @@
    [clojure.data.json :as json]
    [clojure.java.io :as io]
    [clojure.pprint :refer :all]
-   [clojure.string :as str :refer [includes?]]
+   [clojure.set :as set]
+   [clojure.string :as str]
    [jsonista.core :as jsonista]
    [lemmalearnerclj.helper :refer :all]
    [lemmalearnerclj.lemmatizer :as lemmatizer]
@@ -66,14 +67,14 @@
                (for [[k v] %]
                  [k (if (contains? v k) k (first v))])))))
 
-
-(vector {"test" ["fisk", "kage"]})
-
 (defn language->save-path [language]
   (str "dictionary-files/noninflected-words-" language ".json"))
 
 (defn language->alternative-save-path [language]
   (str "dictionary-files/" language "-saved.json"))
+
+(defn language->personal-save-path [language]
+  (str "dictionary-files/" language "-personal.json"))
 
 (defn save-lemma->conjugations [language lemma->conjugations]
   (->> lemma->conjugations
@@ -89,21 +90,6 @@
 (defn uniformize-lemma->conjugations [conjugation->lemma lemma->conjugations]
     (into {} (for [[k v] lemma->conjugations]
                [k (->> v (filter #(= k (get conjugation->lemma %)) ) set)]))) ;; Ensure that conjugations and lemmas point at the same thing.
-  ;; (let [raw-lemmas (set (map :raw (keys lemma->conjugations)))]
-  ;;   (into {} (for [[k v] lemma->conjugations]
-  ;;              [k (->> v (filter #(or (not (contains? raw-lemmas (:raw %)))
-  ;;                                     (= (:raw k) (:raw %)))))])))
-
-(defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]
-  (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
-        conjugation->lemma (choose-single-lemma conjugation->lemmas)
-        lemma->conjugations-uniform (uniformize-lemma->conjugations conjugation->lemma lemma->conjugations)]
-    (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations-uniform)))
-
-(defn json-lines->lemmatizer [language json-lines & {:keys [save-lemmatizer] :or {save-lemmatizer true}}]
-  (let [lemmatizer  (lemma->conjugations-to-lemmatizer language (json-lines->lemma->conjugation json-lines))]
-    (do (if save-lemmatizer (save-lemma->conjugations language (:lemma->conjugations lemmatizer)) nil)
-        lemmatizer)))
 
 (defn load-saved-lemma-to-words-file [language]
   (->> language
@@ -113,12 +99,40 @@
        (#(update-keys % (fn [x] (Lemma. (name x))))) ; The keys and values are strings, so we need to map back
        (#(p/update-vals % (fn [x] (set (map (fn [y] (Conjugation. y)) x)))))))
 
+(defn load-personal-dictionary [language]
+  (if (not (.exists (io/file (language->personal-save-path language)))) {}
+      (->> (language->personal-save-path language)
+           slurp
+           jsonista/read-value
+           (#(update-keys % (fn [x] (Conjugation. x))))
+           (#(update-vals % (fn [x] (Lemma. x)))))))
+
+(defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]
+  (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
+        conjugation->lemma (choose-single-lemma conjugation->lemmas)
+        lemma->conjugations-uniform (uniformize-lemma->conjugations conjugation->lemma lemma->conjugations)]
+    (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations-uniform)))
+
+(defn update-lemmatizer-with-personal-dictionary [[[conjugation lemma] & T] lemmatizer]
+  (println [conjugation lemma])
+  (if (nil? conjugation) lemmatizer
+      (let [old-lemma (get (:conjugation->lemma lemmatizer) conjugation)
+            lemma->conjugations-old-removed (update (:lemma->conjugations lemmatizer) old-lemma #(disj % conjugation))
+            updated-conjugation->lemma (assoc (:conjugation->lemma lemmatizer) conjugation lemma lemma lemma) ; If a conjugation point at a lemma, the lemma should also point to itself
+            updated-lemma->conjugations (merge-with set/union lemma->conjugations-old-removed {lemma #{conjugation lemma}})
+            ]
+        (recur T (assoc lemmatizer :conjugation->lemma updated-conjugation->lemma :lemma->conjugations updated-lemma->conjugations)))))
+
+(defn json-lines->lemmatizer [language json-lines & {:keys [save-lemmatizer] :or {save-lemmatizer true}}]
+  (let [lemmatizer  (lemma->conjugations-to-lemmatizer language (json-lines->lemma->conjugation json-lines))]
+    (do (if save-lemmatizer (save-lemma->conjugations language (:lemma->conjugations lemmatizer)) nil)
+        lemmatizer)))
+
 (defn language->lemmatizer [language]
-  (wrap-with-print
-   (str "Loading dictionary for language: " language)
-   (if (.exists (io/file (language->alternative-save-path language)))
-     (do (println "Loading existing lemmafile")
-         (lemma->conjugations-to-lemmatizer language (load-saved-lemma-to-words-file language)))
-     (do (println "Loading new lemmafile")
-         (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
-   (str "Finished loading dictionary")))
+  (wrap-with-print (str "Loading dictionary for language: " language)
+                   (if (.exists (io/file (language->alternative-save-path language)))
+                     (do (println "Loading existing lemmafile")
+                         (lemma->conjugations-to-lemmatizer language (load-saved-lemma-to-words-file language)))
+                     (do (println "Loading new lemmafile")
+                         (json-lines->lemmatizer language (path->json-lines (language->save-path language)))))
+                   (str "Finished loading dictionary")))
