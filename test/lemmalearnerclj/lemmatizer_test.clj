@@ -71,4 +71,3 @@
              (update-lemmatizer-with-personal-dictionary {2 1} {:lemma->conjugations {3 #{4} 2 #{1 2}} :conjugation->lemma {1 2 4 3 2 2}})))
       )))
 
-(update-lemmatizer-with-personal-dictionary {1 2} {:lemma->conjugations {3 #{1 4}} :conjugation->lemma {1 3 4 3}})

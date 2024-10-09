@@ -64,16 +64,19 @@
 (deftest test-correct-initialized-sentences-by-score
   (testing ""
     (let [simple-information (raw-text->new-learn-info "Lære. Kage. Kage test. Kage lære. Kage testen.")
-          learnable-sentences (->> simple-information :learn-db :sentences-by-score seq (map #(identity [(:raw (first %)) (second %)])))]
-      (is (= (seq [["Kage." 2.0] ["Lære." 1.0]])
+          learnable-sentences (->> simple-information :learn-db :sentences-by-score
+                                   seq (map #(identity [(:raw (first %)) (second %)])))]
+      (is (= (seq [["Kage." 3.0] ["Lære." 2.0]])
              learnable-sentences)))))
 
 (deftest test-learn-sentence-updates-sentences-by-score
   (testing ""
     (let [simple-information (raw-text->new-learn-info "Sætning. Sætning et. Sætning to.")
-          start-learnable-sentences (->> simple-information :learn-db :sentences-by-score seq (map first) (map :raw) set)
+          start-learnable-sentences (->> simple-information :learn-db :sentences-by-score
+                                         seq (map first) (map :raw) set)
           learned-sentence (learn-top-sentence simple-information)
-          learnable-sentences (->> learned-sentence :learn-db :sentences-by-score seq (map first) (map :raw) set)]
+          learnable-sentences (->> learned-sentence :learn-db :sentences-by-score
+                                   seq (map first) (map :raw) set)]
       (is (= #{"Sætning."}
              start-learnable-sentences))
       (is (= #{"Sætning et." "Sætning to."}
@@ -153,9 +156,8 @@
 
 (deftest test-get-a-lemma
   (testing "Did not return a lemma word"
-    (let [unlearned-lemma (get-a-unlearned-lemma large-learn-info)]
+    (let [unlearned-lemma (get-an-unlearned-lemma large-learn-info)]
       (is (not (nil? unlearned-lemma))))))
-
 
 (deftest test-all-lemmas-learned-after-finished-learning
   (testing ""

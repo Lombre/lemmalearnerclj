@@ -7,9 +7,15 @@
                  [parallel "0.10"]
                  [metosin/jsonista "0.3.8"]
                  [philoskim/debux "0.9.1"]
-                 [org.clojure/data.priority-map "1.2.0"]]
+                 [org.clojure/data.priority-map "1.2.0"]
+                 [com.phronemophobic/membrane  "0.11.1.1-beta"]
+                 [clojure-lanterna "0.9.7"]
+
+                 ]
+
   :plugins [[lein-cloverage "1.2.2"] [lein-try "0.4.3"]]
-  :jvm-opts ["-Djdk.attach.allowAttachSelf"] ; To enable profiling
+  :jvm-opts ["-Djdk.attach.allowAttachSelf" ; To enable profiling
+             "-Xmx16g"]                     ; More memory!
   :java-source-paths ["src/java" "test/java"]
   :main ^:skip-aot lemmalearnerclj.core
   :target-path "target/%s"

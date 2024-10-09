@@ -40,7 +40,7 @@
   (->> (:sentences paragraph) (map :words) (apply clojure.set/union)))
 
 (defn word-seperator? [char]
-  (contains? #{\space \- \— \’ \' \…} char))
+  (contains? #{\space \t \- \— \’ \' \…} char))
 
 (defn at-end-of-word? [parse-conf cur-char]
   (if (contains? parse-conf :end-of-word-chars)

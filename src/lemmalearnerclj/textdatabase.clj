@@ -6,7 +6,8 @@
    [lemmalearnerclj.helper :as helper]
    [lemmalearnerclj.lemmatizer :as lemmatizer]
    [lemmalearnerclj.parser :as parser]
-   [lemmalearnerclj.textdatastructures]))
+   [lemmalearnerclj.textdatastructures]
+   [clojure.string :as str]))
 
 (require '[clojure.core.reducers :as reducers])
 
@@ -27,7 +28,9 @@
        (distinct)))
 
 (defn directory->file-paths [directory-path]
-  (map #(.getAbsolutePath %) (.listFiles (clojure.java.io/file directory-path))))
+  (->> (.listFiles (clojure.java.io/file directory-path))
+       (filter #(str/ends-with? % ".txt"))
+       (map #(.getAbsolutePath %))))
 
 (defn parse-texts-in-directory [parse-config directory]
   (->> directory
@@ -36,7 +39,8 @@
 
 (defn texts->sentences [texts]
   (->> texts
-       (mapcat text->sentences)))
+       (pmap text->sentences)
+       flatten))
 
 (defn sentences->words [sentences]
   (->> sentences
