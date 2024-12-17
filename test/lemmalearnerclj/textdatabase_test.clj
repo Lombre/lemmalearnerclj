@@ -1,10 +1,13 @@
 (ns lemmalearnerclj.textdatabase-test
-  (:require [lemmalearnerclj.textdatastructures]
-            [lemmalearnerclj.parser :as parser]
-            [lemmalearnerclj.textdatabase :refer :all]
-            [clojure.test :refer :all]
-            [clojure.set])
-  (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence Conjugation]))
+  (:require
+   [clojure.pprint :as pprint]
+   [clojure.set]
+   [clojure.test :refer :all]
+   [lemmalearnerclj.parser :as parser]
+   [lemmalearnerclj.textdatabase :refer :all]
+   [lemmalearnerclj.textdatastructures])
+  (:import
+   [lemmalearnerclj.textdatastructures Sentence Lemma Conjugation]))
 
 (def parsing-config {:punctuation #{\. \! \?}
                     :quote-pairs {\" \"
@@ -62,3 +65,20 @@
             expected-words #{"this" "is" "a" "line" "and" "another"}]
         (is (= (set (map :raw words))
                expected-words)))))
+
+
+(def test-textdb (->Textdatabase nil nil nil nil nil
+                                {(Lemma. "cake") #{(Conjugation. "cake") (Conjugation. "cakes")}}
+                                {(Conjugation. "cake") (Lemma. "cake") (Conjugation. "cakes") (Lemma. "cake")}))
+
+
+;; (defn update-lemmatization [text-db conjugation new-lemma]
+;;   (let [old-lemmatization (get (->> text-db :conjugation->lemma) conjugation)
+;;         updated-text-db (->> text-db
+;;                              (#(assoc-in % [:conjugation->lemma conjugation] new-lemma))
+;;                              ;; (#(assoc-in % [:lemma->conjugations new-lemma]))
+;;                              )
+;;         ]
+;;     updated-text-db))
+
+;; (pprint/pprint (update-lemmatization test-textdb (Conjugation. "cake") (Lemma. "cakes")))

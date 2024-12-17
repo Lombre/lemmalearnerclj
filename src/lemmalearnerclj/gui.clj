@@ -8,7 +8,15 @@
    [lemmalearnerclj.parser :as parser]
    [lemmalearnerclj.textdatabase :refer :all]
    [lemmalearnerclj.textdatabase :as textdatabase]
-   [clojure.java.io :as io]))
+   [lemmalearnerclj.textdatastructures :refer :all]
+   [clojure.java.io :as io])
+  (:import
+   [lemmalearnerclj.textdatastructures
+    Conjugation
+    Lemma
+    Paragraph
+    Sentence
+    Text]))
 
 
 ;; (java2d/run #(ui/label "Hello World!"))
@@ -124,7 +132,6 @@
       ;; (learner/load-learning-progress)
       (update-loop nil initial-setup)))
 
-
 (defn get-path-last-saved-learning-progress []
   (->> (clojure.java.io/file ".")
        file-seq
@@ -135,17 +142,17 @@
 
 (->> (get-path-last-saved-learning-progress)
      (learner/load-learning-progress initial-setup)
-     (update-loop nil)
+     ;; (update-loop nil)
      )
 
-(reducers/reduce + 0 [1 2 3 4 5])
+(defn update-lemmatization [learning-information conjugation new-lemma]
+  (let [old-lemmatization (get (->> learning-information :text-db :conjugation->lemma) conjugation)]
+    (pprint/pprint old-lemmatization)
+    old-lemmatization))
+
+;; Change lemmatization
+(let [conjugation (Conjugation. "cakes")
+      new-lemma (Lemma. "cake")]
+  (update-lemmatization initial-setup conjugation new-lemma))
 
 (println "kage")
-;; (print-initial-setup initial-setup)
-
-;; (tui-update initial-setup learned-first-sentence)
-
-;; (def test123 (action->updated-state learned-first-sentence [:learn 1]))
-
-
-;; (tui-update learned-first-sentence test123)
