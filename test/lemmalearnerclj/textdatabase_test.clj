@@ -7,7 +7,7 @@
    [lemmalearnerclj.textdatabase :refer :all]
    [lemmalearnerclj.textdatastructures])
   (:import
-   [lemmalearnerclj.textdatastructures Sentence Lemma Conjugation]))
+   [lemmalearnerclj.textdatastructures Sentence]))
 
 (def parsing-config {:punctuation #{\. \! \?}
                     :quote-pairs {\" \"
@@ -44,13 +44,13 @@
   (testing
       (let [words (sentences->words simple-sentences)
             expected-words #{"this" "is" "a" "line" "and" "another"}]
-        (is (= (set (map :raw words))
+        (is (= words
                expected-words)))))
 
 (deftest test-words-to-sentences
   (testing
       (let [word->sentences (sentences->word->sentences simple-sentences)
-            actual-mapping (update-vals (update-keys word->sentences :raw) #(set (map :raw %)))]
+            actual-mapping (update-vals word->sentences #(set (map :raw %)))]
         (is (= actual-mapping
                {"this" #{"This is a line."}
                 "is" #{"This is a line."}
@@ -63,13 +63,13 @@
   (testing
       (let [words (sentences->words simple-sentences)
             expected-words #{"this" "is" "a" "line" "and" "another"}]
-        (is (= (set (map :raw words))
+        (is (= words
                expected-words)))))
 
 
 (def test-textdb (->Textdatabase nil nil nil nil nil
-                                {(Lemma. "cake") #{(Conjugation. "cake") (Conjugation. "cakes")}}
-                                {(Conjugation. "cake") (Lemma. "cake") (Conjugation. "cakes") (Lemma. "cake")}))
+                                 {"cake" #{"cake" "cakes"}}
+                                 {"cake" "cake" "cakes" "cake"}))
 
 
 ;; (defn update-lemmatization [text-db conjugation new-lemma]

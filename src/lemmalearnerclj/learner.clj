@@ -13,7 +13,7 @@
    [lemmalearnerclj.textdatastructures]
    [parallel.core :as p])
   (:import
-   [lemmalearnerclj.textdatastructures Conjugation Sentence]))
+   [lemmalearnerclj.textdatastructures Sentence]))
 
 (require '[clojure.data.priority-map :refer [priority-map priority-map-by]])
 
@@ -184,10 +184,10 @@
 (defn sentence->str-word-scores [learn-info sentence]
   (->> sentence
        :words
-       (map #(if (not (contains? (->> learn-info :text-db :conjugation->lemma) %)) (:raw %)
+       (map #(if (not (contains? (->> learn-info :text-db :conjugation->lemma) %)) %
                  (let [lemma (conjugation->lemma (:text-db learn-info) %)]
-                   (list [(:raw lemma)
-                          (:raw %)
+                   (list [lemma
+                          %
                           (lemma->times-learned learn-info lemma)
                           (get (->> learn-info :learn-prog :conj->#learned) %)
                           (get (->> learn-info :learn-db :lemma->frequency) lemma)
@@ -199,7 +199,7 @@
   (let [total-lemma-count (->> learn-info :text-db :lemmas count)
         current-lemma-count (+ 1 (count-lemmas-learned learn-info))
         unlearned-lemmas (sentence->unlearned-lemmas learn-info sentence)
-        message (str current-lemma-count " of " total-lemma-count ", " (set (map :raw unlearned-lemmas)) " "
+        message (str current-lemma-count " of " total-lemma-count ", " (set unlearned-lemmas) " "
                      (format "%.2f" (if (nil? score) 0.0 score)) " -> " (:raw sentence) "\n\t"
                      (sentence->str-word-scores learn-info sentence))]
     (print-if (or (zero? (mod current-lemma-count 100))
@@ -237,9 +237,9 @@
 
 (defn make-fake-sentence-with-an-unlearned-lemma [learn-info]
   (let [unlearned-lemma (get-an-unlearned-lemma learn-info)
-            unlearned-lemma-sentence (Sentence. (str "NoSentence: " (:raw unlearned-lemma))
+        unlearned-lemma-sentence (Sentence. (str "NoSentence: " unlearned-lemma)
                                                 []
-                                                [(Conjugation. (:raw unlearned-lemma)) ]) ]
+                                                [unlearned-lemma ]) ]
         (if (not (nil? unlearned-lemma)) nil
             (throw (Exception. "Error: Trying to learn an unlearned lemma, when there are non left.")))
         [unlearned-lemma-sentence 0.0 learn-info]))
@@ -304,7 +304,7 @@
        (text-db->new-learn-info config)))
 
 (defn score-point-to-str [{:keys [lemma sentence score]}]
-  (str (:raw lemma) " " (if (nil? score) score (math/round (- score))) " -> " (:raw sentence)))
+  (str lemma " " (if (nil? score) score (math/round (- score))) " -> " (:raw sentence)))
 
 (defn save-learning-progress
   ([learn-info] (save-learning-progress (str (getx (->> learn-info :config) :start-time)

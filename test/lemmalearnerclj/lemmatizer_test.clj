@@ -4,21 +4,20 @@
    [lemmalearnerclj.helper :as helper]
    [lemmalearnerclj.lemmatizer :refer :all]
    [lemmalearnerclj.textdatastructures])
-  (:import
-   [lemmalearnerclj.textdatastructures Conjugation Lemma]))
+  )
 
 
 (deftest test-convert-json-to-lemma-map
   (testing "Cannot load a dictionary from a file"
     (let [json-lines (path->json-lines "dictionary-files/test/single-word.json")]
-      (is (= [(Lemma. "kage") #{(Conjugation. "kage")
-                                (Conjugation. "kagens")
-                                (Conjugation. "kagerne")
-                                (Conjugation. "kagers")
-                                (Conjugation. "kagernes")
-                                (Conjugation. "kagen")
-                                (Conjugation. "kager")
-                                (Conjugation. "kages")}]
+      (is (= ["kage" #{"kage"
+                       "kagens"
+                       "kagerne"
+                       "kagers"
+                       "kagernes"
+                       "kagen"
+                       "kager"
+                       "kages"}]
              (->> json-lines first jsonobj->lemmamap))))))
 
 (deftest test-json-lines->lemmatizer
@@ -30,24 +29,24 @@
            lemma->conjugations :lemma->conjugations} (json-lines->lemmatizer "test" json-lines)]
       (is (= "test"
              language))
-      (is (= {{:raw "fiskene"} {:raw "fisk"}, {:raw "fisks"} {:raw "fisk"}, {:raw "kagens"} {:raw "kage"},
-              {:raw "kage"} {:raw "kage"}, {:raw "fisken"} {:raw "fisk"}, {:raw "kagerne"} {:raw "kage"},
-              {:raw "kagers"} {:raw "kage"}, {:raw "kagernes"} {:raw "kage"}, {:raw "kagen"} {:raw "kage"},
-              {:raw "fiskenes"} {:raw "fisk"}, {:raw "kager"} {:raw "kage"}, {:raw "fisk"} {:raw "fisk"},
-              {:raw "kages"} {:raw "kage"}, {:raw "fiskens"} {:raw "fisk"}}
+      (is (= {"fiskene" "fisk", "fisks" "fisk", "kagens" "kage",
+              "kage" "kage", "fisken" "fisk", "kagerne" "kage",
+              "kagers" "kage", "kagernes" "kage", "kagen" "kage",
+              "fiskenes" "fisk", "kager" "kage", "fisk" "fisk",
+              "kages" "kage", "fiskens" "fisk"}
              (helper/record->map conjugation->lemma)))
-      (is (= {{:raw "kage"} #{{:raw "kagens"} {:raw "kage"} {:raw "kagerne"} {:raw "kagers"}
-                              {:raw "kagernes"} {:raw "kagen"} {:raw "kager"} {:raw "kages"}},
-              {:raw "fisk"} #{{:raw "fiskene"} {:raw "fisks"} {:raw "fisken"} 
-                              {:raw "fiskenes"} {:raw "fisk"} {:raw "fiskens"}}}
+      (is (= {"kage" #{"kagens" "kage" "kagerne" "kagers"
+                       "kagernes" "kagen" "kager" "kages"},
+              "fisk" #{"fiskene" "fisks" "fisken"
+                       "fiskenes" "fisk" "fiskens"}}
              (helper/record->map lemma->conjugations)))
-      (is (= {{:raw "kagens"} #{{:raw "kage"}}, {:raw "fiskene"} #{{:raw "fisk"}},
-              {:raw "fisks"} #{{:raw "fisk"}}, {:raw "kage"} #{{:raw "kage"} {:raw "fisk"}},
-              {:raw "fisken"} #{{:raw "fisk"}}, {:raw "kagerne"} #{{:raw "kage"}},
-              {:raw "kagers"} #{{:raw "kage"}}, {:raw "kagernes"} #{{:raw "kage"}},
-              {:raw "kagen"} #{{:raw "kage"} {:raw "fisk"}}, {:raw "fisk"} #{{:raw "fisk"}},
-              {:raw "kager"} #{{:raw "kage"}}, {:raw "fiskenes"} #{{:raw "fisk"}},
-              {:raw "kages"} #{{:raw "kage"}}, {:raw "fiskens"} #{{:raw "fisk"}}}
+      (is (= {"kagens" #{"kage"}, "fiskene" #{"fisk"},
+              "fisks" #{"fisk"}, "kage" #{"kage" "fisk"},
+              "fisken" #{"fisk"}, "kagerne" #{"kage"},
+              "kagers" #{"kage"}, "kagernes" #{"kage"},
+              "kagen" #{"kage"}, "fisk" #{"fisk"},
+              "kager" #{"kage"}, "fiskenes" #{"fisk"},
+              "kages" #{"kage"}, "fiskens" #{"fisk"}}
              (helper/record->map conjugation->lemmas)))
       )))
 
@@ -64,22 +63,22 @@
   (testing ""
     (do
       ;; No additions should change nothing
-      (is (= {:lemma->conjugations {(Lemma.  "3") #{(Conjugation. "1") (Conjugation. "4")}}
-              :conjugation->lemma {(Conjugation. "1") (Lemma. "3") (Conjugation. "4") (Lemma. "3")}}
+      (is (= {:lemma->conjugations {"3" #{"1" "4"}}
+              :conjugation->lemma {"1" "3" "4" "3"}}
              (update-lemmatizer-with-personal-dictionary {}
-                                                         {:lemma->conjugations {(Lemma. "3") #{(Conjugation. "1") (Conjugation. "4")}}
-                                                          :conjugation->lemma {(Conjugation. "1") (Lemma. "3") (Conjugation. "4") (Lemma. "3")}})))
+                                                         {:lemma->conjugations {"3" #{"1" "4"}}
+                                                          :conjugation->lemma {"1" "3" "4" "3"}})))
 
-      (is (= {:lemma->conjugations {(Lemma. "3") #{(Conjugation. "4")} (Lemma. "2") #{(Conjugation. "1") (Conjugation. "2")}}
-              :conjugation->lemma {(Conjugation. "1") (Lemma. "2") (Conjugation. "4") (Lemma. "3") (Conjugation. "2") (Lemma. "2")}}
-             (update-lemmatizer-with-personal-dictionary {(Conjugation. "1") (Lemma. "2")}
-                                                         {:lemma->conjugations {(Lemma. "3") #{(Conjugation. "1") (Conjugation. "4")}}
-                                                          :conjugation->lemma {(Conjugation. "1") (Lemma. "3") (Conjugation. "4") (Lemma. "3")}})))
+      (is (= {:lemma->conjugations {"3" #{"4"} "2" #{"1" "2"}}
+              :conjugation->lemma {"1" "2" "4" "3" "2" "2"}}
+             (update-lemmatizer-with-personal-dictionary {"1" "2"}
+                                                         {:lemma->conjugations {"3" #{"1" "4"}}
+                                                          :conjugation->lemma {"1" "3" "4" "3"}})))
 
-      (is (= {:lemma->conjugations {(Lemma. "3") #{(Conjugation. "4")} (Lemma. "1") #{(Conjugation. "1") (Conjugation. "2")} (Lemma. "2") #{(Conjugation. "5")}}
-              :conjugation->lemma {(Conjugation. "2") (Lemma. "1") (Conjugation. "1") (Lemma. "1") (Conjugation. "5") (Lemma. "2") (Conjugation. "4") (Lemma. "3")}}
-             (update-lemmatizer-with-personal-dictionary {(Conjugation. "2") (Lemma. "1")}
-                                                         {:lemma->conjugations {(Lemma. "3") #{(Conjugation. "4")} (Lemma. "2") #{(Conjugation. "1") (Conjugation. "2") (Conjugation. "5")}}
-                                                          :conjugation->lemma {(Conjugation. "1") (Lemma. "2") (Conjugation. "2") (Lemma. "2") (Conjugation. "5") (Lemma. "2") (Conjugation. "4") (Lemma. "3")}})))
+      (is (= {:lemma->conjugations {"3" #{"4"} "1" #{"1" "2"} "2" #{"5"}}
+              :conjugation->lemma {"2" "1" "1" "1" "5" "2" "4" "3"}}
+             (update-lemmatizer-with-personal-dictionary {"2" "1"}
+                                                         {:lemma->conjugations {"3" #{"4"} "2" #{"1" "2" "5"}}
+                                                          :conjugation->lemma {"1" "2" "2" "2" "5" "2" "4" "3"}})))
       )))
 

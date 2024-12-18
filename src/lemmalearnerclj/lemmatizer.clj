@@ -11,8 +11,7 @@
    [lemmalearnerclj.lemmatizer :as lemmatizer]
    [lemmalearnerclj.textdatastructures]
    [parallel.core :as p])
-  (:import
-   [lemmalearnerclj.textdatastructures Conjugation Lemma]))
+  )
 
 (defrecord Lemmatizer [language conjugation->lemma conjugation->lemmas lemma->conjugations])
 
@@ -23,7 +22,7 @@
   (get-json-lines (slurp path)))
 
 (defn json-to-lemma [jsonobj]
-  (Lemma. (:word jsonobj)))
+  (:word jsonobj))
 
 (defn json-to-conjugations [jsonobj]
   (->> jsonobj
@@ -33,13 +32,12 @@
        (map :form)
        (filter #(not (.contains % " ")))
        (filter #(not (contains? #{"", "-"} %) ))
-       (map #(Conjugation. %))
        set))
 
 (defn jsonobj->lemmamap [jsonobj]
   (let [lemma (json-to-lemma jsonobj)
         conjugations (json-to-conjugations jsonobj)]
-    [lemma (conj conjugations (Conjugation. (:raw lemma)))]))
+    [lemma (conj conjugations lemma)]))
 
 (defn merge-lemma-maps [lemma-maps]
   (reducers/reduce #(merge-with into %1 %2) {} lemma-maps))
@@ -47,7 +45,7 @@
 (defn json-lines->lemma->conjugation [json-lines]
   (->> json-lines
        (map jsonobj->lemmamap)
-       (filter #(not (.contains (:raw (first %)) " ")))
+       (filter #(not (.contains (first %) " ")))
        (map #(identity {(first %) (second %)}))
        merge-lemma-maps))
 
@@ -78,8 +76,6 @@
 
 (defn save-lemma->conjugations [language lemma->conjugations]
   (->> lemma->conjugations
-       (#(update-keys % :raw))
-       (#(update-vals % (partial map :raw)))
        (into (sorted-map))
        (#(json/write-str % :escape-unicode false))
        (#(str/replace % #"]," "],\n "))
@@ -96,16 +92,16 @@
        language->alternative-save-path
        slurp
        jsonista/read-value
-       (#(update-keys % (fn [x] (Lemma. (name x))))) ; The keys and values are strings, so we need to map back
-       (#(p/update-vals % (fn [x] (set (map (fn [y] (Conjugation. y)) x)))))))
+       (#(update-keys % (fn [x] (name x)))) ; The keys and values are strings, so we need to map back
+       (#(p/update-vals % (fn [x] (set (map (fn [y] y) x)))))))
 
 (defn load-personal-dictionary [language]
   (if (not (.exists (io/file (language->personal-save-path language)))) {}
       (->> (language->personal-save-path language)
            slurp
            jsonista/read-value
-           (#(update-keys % (fn [x] (Conjugation. x))))
-           (#(update-vals % (fn [x] (Lemma. x)))))))
+           (#(update-keys % (fn [x] x)))
+           (#(update-vals % (fn [x] x))))))
 
 (defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]
   (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
@@ -113,22 +109,17 @@
         lemma->conjugations-uniform (uniformize-lemma->conjugations conjugation->lemma lemma->conjugations)]
     (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations-uniform)))
 
-(defn lemma-as-conjugation [lemma]
-  (Conjugation. (:raw lemma)))
-
-(defn conjugation-as-lemma [conjugation]
-  (Lemma. (:raw conjugation)))
 
 (defn update-lemmatizer-with-personal-dictionary [[[conjugation lemma] & T] lemmatizer]
   (println [conjugation lemma])
   (if (nil? conjugation) lemmatizer
       (let [old-lemma (get (:conjugation->lemma lemmatizer) conjugation)
             lemma->conjugations-old-removed (->> (:lemma->conjugations lemmatizer)
-                                                 (#(update % old-lemma (fn [x] (disj x conjugation (lemma-as-conjugation lemma))))))
+                                                 (#(update % old-lemma (fn [x] (disj x conjugation lemma)))))
             updated-conjugation->lemma (->> (:conjugation->lemma lemmatizer)
                                             (#(assoc % conjugation lemma
-                                                       (lemma-as-conjugation lemma) lemma))) ; If a conjugation point at a lemma, the lemma should also point to itself
-            updated-lemma->conjugations (merge-with set/union lemma->conjugations-old-removed {lemma #{conjugation (lemma-as-conjugation lemma)}})]
+                                                     lemma lemma))) ; If a conjugation point at a lemma, the lemma should also point to itself
+            updated-lemma->conjugations (merge-with set/union lemma->conjugations-old-removed {lemma #{conjugation lemma}})]
         (recur T (assoc lemmatizer :conjugation->lemma updated-conjugation->lemma :lemma->conjugations updated-lemma->conjugations)))))
 
 (defn json-lines->lemmatizer [language json-lines & {:keys [save-lemmatizer] :or {save-lemmatizer true}}]

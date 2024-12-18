@@ -12,8 +12,6 @@
    [clojure.java.io :as io])
   (:import
    [lemmalearnerclj.textdatastructures
-    Conjugation
-    Lemma
     Paragraph
     Sentence
     Text]))
@@ -151,8 +149,8 @@
     old-lemmatization))
 
 ;; Change lemmatization
-(let [conjugation (Conjugation. "cakes")
-      new-lemma (Lemma. "cake")]
+(let [conjugation "cakes"
+      new-lemma "cake"]
   (update-lemmatization initial-setup conjugation new-lemma))
 
 (println "kage")

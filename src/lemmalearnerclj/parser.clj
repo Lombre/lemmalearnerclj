@@ -4,10 +4,10 @@
    [lemmalearnerclj.textdatastructures])
   (:import
    [lemmalearnerclj.textdatastructures
-    Conjugation
     Paragraph
     Sentence
-    Text]))
+    Text]
+   ))
 
 (require '[clojure.core.match :refer [match]])
 (require '[clojure.string :as str])
@@ -54,8 +54,8 @@
   (cond (instance? Paragraph input) (:raw input)
         :else input))
 
-(defn parse-raw-conjugation
-  [raw-word] (Conjugation. (str/lower-case (apply str  raw-word))))
+(defn parse-raw-conjugation [raw-word]
+  (str/lower-case (apply str raw-word)))
 
 (defn parse-raw-sentence
   ([parsing-config raw-sentence]

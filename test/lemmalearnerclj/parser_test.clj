@@ -3,7 +3,7 @@
             [lemmalearnerclj.textdatastructures :refer :all]
             [clojure.test :refer :all]
             [lemmalearnerclj.helper :as helper])
-  (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence Conjugation]))
+  (:import [lemmalearnerclj.textdatastructures Text Paragraph Sentence]))
 
 (def parse-config
   {:punctuation #{\. \! \?}
@@ -21,41 +21,41 @@
   (testing "Singleton word parsed incorrectly"
     (let [input-word "test"
           output-sentence (parse-raw-sentence parse-config input-word)]
-      (is (= (->Sentence input-word [] #{(->Conjugation input-word)}) output-sentence)))))
+      (is (= (->Sentence input-word [] #{input-word}) output-sentence)))))
 
 (deftest parse-simple-word-lowercasing
   (testing "Singleton word parsed incorrectly. It should be lowercased"
     (let [input-word "TeSTinG"
           output-sentence (parse-raw-sentence parse-config input-word)]
-      (is (= (->Sentence input-word [] #{(->Conjugation (.toLowerCase input-word))}) output-sentence)))))
+      (is (= (->Sentence input-word [] #{(.toLowerCase input-word)}) output-sentence)))))
 
 (deftest parse-simple-sentence
   (testing "Simple sentence parsed incorrectly"
     (let [input-sentence "tests are good."
           output-sentence (parse-raw-sentence parse-config input-sentence)]
-      (is (= (->Sentence input-sentence [] #{(->Conjugation "tests") (->Conjugation "are") (->Conjugation "good")}) output-sentence)))))
+      (is (= (->Sentence input-sentence [] #{"tests" "are" "good"}) output-sentence)))))
 
 (deftest parse-sentence-with-duplicate-words
   (testing "Duplicate words handeled incorrectly incorrectly"
     (let [input-sentence "tests tests are good."
           output-sentence (parse-raw-sentence parse-config input-sentence)]
-      (is (= (->Sentence input-sentence [] #{(->Conjugation "tests") (->Conjugation "are") (->Conjugation "good")}) output-sentence)))))
+      (is (= (->Sentence input-sentence [] #{"tests" "are" "good"}) output-sentence)))))
 
 (deftest parse-simple-paragraph
   (testing "Could not parse simple paragraph"
     (let [input-paragraph "This is. a paragraph."
           output-paragraph (parse-raw-paragraph parse-config input-paragraph)]
-      (is (= output-paragraph (->Paragraph input-paragraph [(->Sentence "This is." [] #{(->Conjugation "this") (->Conjugation "is")})
-                                                            (->Sentence "a paragraph." [] #{(->Conjugation "a") (->Conjugation"paragraph")})]))))))
+      (is (= output-paragraph (->Paragraph input-paragraph [(->Sentence "This is." [] #{"this" "is"})
+                                                            (->Sentence "a paragraph." [] #{"a" "paragraph"})]))))))
 
 (deftest parse-nested-sentence-handles-ending-punctuation
   (testing "Could not handle ending punctuation"
-    (is (= #{{:raw "an"}
-             {:raw "argument"}
-             {:raw "she"}
-             {:raw "had"}
-             {:raw "and"}
-             {:raw "‘you"}}
+    (is (= #{"an"
+             "argument"
+             "she"
+             "had"
+             "and"
+             "‘you"}
            (->> "‘You and she had an argument?’"
                 (parse-raw-paragraph parse-config)
                 :sentences
@@ -72,9 +72,9 @@
              (->Paragraph "tests \"cake tests.\" are good.",
                           [(->Sentence "tests \"cake tests.\" are good.",
                                        [(->Paragraph "cake tests.",
-                                                     [(->Sentence "cake tests." [] #{(->Conjugation "cake") (->Conjugation "tests")})])
+                                                     [(->Sentence "cake tests." [] #{"cake" "tests"})])
                                         ]
-                                       #{(->Conjugation "cake") (->Conjugation "tests") (->Conjugation "are") (->Conjugation "good")}
+                                       #{"cake" "tests" "are" "good"}
                                        )]))))))
 
 

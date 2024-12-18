@@ -10,7 +10,7 @@
    [clojure.pprint :as pprint]
    [clojure.set :as set])
   (:import
-   [lemmalearnerclj.textdatastructures Sentence Conjugation Lemma]))
+   [lemmalearnerclj.textdatastructures Sentence]))
 
 (def parse-config
   {:punctuation #{\. \! \?}
@@ -88,7 +88,7 @@
           learned-sentence (learn-top-sentence simple-information)
           lemmas-by-score-before (->> simple-information :learn-db :lemmas-by-score)
           lemmas-by-score-after (->> learned-sentence :learn-db :lemmas-by-score)]
-      (is (= (dissoc lemmas-by-score-before (Lemma. "test"))
+      (is (= (dissoc lemmas-by-score-before "test")
              lemmas-by-score-after)))))
 
 (deftest test-learn-word-updates-sentences-by-score
@@ -112,14 +112,16 @@
                                      :sentences
                                      (sentences->lemmas-by-frequency test-text-db))]
       (is (= (helper/record->map lemmas-by-frequencies)
-             {{:raw "denne"} 2, {:raw "sætning"} 2, {:raw "en"} 2, {:raw "race"} 2, {:raw "endnu"} 1}))
+             {"denne" 2, "sætning" 2, "en" 2, "demontere" 2, "endnu" 1}))
       )))
+
+(->> test-text-db :sentences pprint/pprint)
 
 (deftest test-text-db-to-words-by-frequencies
   (testing "Words do not have the correct frequencies"
     (let [word->frequency (text-db->lemma->frequency test-text-db)]
-        (is (= (update-keys word->frequency :raw)
-               {"race" 2, "denne" 2, "en" 2, "sætning" 2, "endnu" 1})))))
+      (is (= word->frequency
+             {"demontere" 2, "denne" 2, "en" 2, "sætning" 2, "endnu" 1})))))
 
 (deftest test-learned-sentences-correct
   (testing ""
@@ -135,7 +137,7 @@
   (testing ""
     (let [mock-learning-information (raw-text->new-learn-info "Dette er det. Dette er også det.")
           learned-sentences (learn-sentences mock-learning-information [test-sentence1 test-sentence2] [-1.0 -2.0])
-          conj->#learned (update-keys (->> learned-sentences :learn-prog :conj->#learned) :raw) ]
+          conj->#learned (->> learned-sentences :learn-prog :conj->#learned) ]
       (is (= {"dette" 2, "det" 2, "er" 1, "også" 1} conj->#learned))
       (is (= 4 (count-lemmas-learned learned-sentences)))
       (is (= (->> large-learn-info :learn-db :words-by-score count )
