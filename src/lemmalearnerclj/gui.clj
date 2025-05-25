@@ -9,7 +9,8 @@
    [lemmalearnerclj.textdatabase :refer :all]
    [lemmalearnerclj.textdatabase :as textdatabase]
    [lemmalearnerclj.textdatastructures :refer :all]
-   [clojure.java.io :as io])
+   [clojure.java.io :as io]
+   [lemmalearnerclj.lemmatizer :as lemmatizer])
   (:import
    [lemmalearnerclj.textdatastructures
     Paragraph
@@ -21,6 +22,7 @@
 
 (def config
   {:language "english"
+   :should-print? true
    :parsing-config {:punctuation #{\. \! \?}
                     :quote-pairs {\" \"
                                   \“ \”
@@ -55,8 +57,8 @@
 ;;              (initialize)
 ;;              @(resolve 'kage1)))
 
-(def learned-first-sentence
-  (learner/learn-top-sentence initial-setup))
+;; (def learned-first-sentence
+;;   (learner/learn-top-sentence initial-setup))
 
 (defn make-text-bold [text]
   (str "\u001b[1m" text "\u001b[22m" ))
@@ -65,15 +67,14 @@
   (->> (get-top-n-sentences learn-info 10)
        (#(for [i (range (count %))]
            (let [current-sentence (nth % i)
-                 current-lemma (->> current-sentence (learner/sentence->unlearned-lemmas learn-info) first :raw)]
+                 current-lemma (->> current-sentence (learner/sentence->unlearned-lemmas learn-info) first)]
              (println (str (+ i 1) ") "
                            (make-text-bold current-lemma)
-                           " (" ((->> learn-info :learn-db :lemma->frequency) current-lemma) ")"
+                           " (f" ((->> learn-info :learn-db :lemma->frequency) current-lemma) ", s" (format "%.2f" (learner/score-sentence learn-info current-sentence)) ")"
                            ": "
                            (:raw current-sentence)
                            " -> "
                            (->> current-sentence (learner/sentence->lemmas (:text-db learn-info))
-                                (map :raw)
                                 vector)
                            ;; (vector  (map :raw  (learner/sentence->lemmas (:text-db learn-info) current-sentence)))
                            "\n\t\t"
@@ -82,12 +83,10 @@
 (defn print-initial-setup [learn-info]
   (print-current-learnable-sentences learn-info))
 
-(print-initial-setup initial-setup)
-
 (defn tui-update [old-state current-state]
   (do (println)
       (let [{sentence :sentence score :score lemma :lemma} (->> current-state :learn-prog :learning-order last)]
-        (println (str "Learned \"" (:raw lemma) "\"" " from sentence: " (:raw sentence))))
+        (println (str "Learned \"" lemma "\"" " from sentence: " (:raw sentence))))
       (doall (print-current-learnable-sentences current-state))))
 
 (defn get-new-action []
@@ -97,6 +96,7 @@
            ;; learn sentence
            [["learn" (learn-val :guard #(re-matches #"-?\d+" %))]] [:learn (- (Integer/parseInt learn-val) 1)]
            [[(learn-val :guard #(re-matches #"-?\d+" %))]] [:learn (- (Integer/parseInt learn-val) 1)]
+           [["update" conjugation lemma]] [:update conjugation lemma]
            [[(:or "quit" "q")]] [:quit]
            ;; print status
            [["print"]] [:print]
@@ -106,9 +106,37 @@
 (defn- print-current-state [current-state]
   (do (print-current-learnable-sentences current-state)))
 
+
+(defn get-path-last-saved-learning-progress []
+  (->> (clojure.java.io/file ".")
+       file-seq
+       (filter #(and (.isFile %)
+                     (.endsWith (.getName %) ".saved")))
+       (map #(.getName %))
+       (sort-by #(->> (str/split % #"_") first))
+       last))
+
+(defn update-lemmatization [learning-information conjugation new-lemma]
+  (->> (lemmatizer/load-personal-dictionary (->> learning-information :config :language))
+       (#(assoc % conjugation new-lemma))
+       (lemmatizer/save-personal-dictionary (->> learning-information :config :language))))
+
+(defn update-lemmatization-and-reload [learn-info conjugation new-lemma]
+  (do (update-lemmatization learn-info conjugation new-lemma) ; Saves the new lemmatization to disk, and then we reload everything.
+      (let [updated-text-db (textdatabase/texts->text-db (->> learn-info :config)
+                                                         (->> learn-info :text-db :texts))
+            updated-sentences-learned (textdatabase/sentences->sentences-with-lemmas (:conjugation->lemma updated-text-db)
+                                                                                     (->> learn-info :learn-prog :learning-order (map :sentence)))
+            ;;  We have realoaded everything with the updated lemmatization, now we learn the sentences that we have already learned again.
+            updated-learn-info (-> (learner/text-db->new-learn-info (:config learn-info) updated-text-db)
+                                   (learner/learn-sentences updated-sentences-learned))]
+        updated-learn-info)))
+
 (defn action->updated-state [current-state action]
+  (pprint/pprint action)
   (case (first action)
     :learn (learner/learn-nth-top-sentence current-state (second action))
+    :update (update-lemmatization-and-reload current-state (second action) (nth action 2))
     :quit nil
     :print (do (print-current-state current-state)
                current-state)
@@ -130,27 +158,19 @@
       ;; (learner/load-learning-progress)
       (update-loop nil initial-setup)))
 
-(defn get-path-last-saved-learning-progress []
-  (->> (clojure.java.io/file ".")
-       file-seq
-       (filter #(and (.isFile %) (.endsWith (.getName %) ".saved")))
-       (map #(.getName %))
-       (sort-by #(->> (str/split % #"_") first))
-       last))
+(def loaded-progress (learner/load-learning-progress initial-setup (get-path-last-saved-learning-progress)))
 
-(->> (get-path-last-saved-learning-progress)
-     (learner/load-learning-progress initial-setup)
-     ;; (update-loop nil)
-     )
+(defn start-everything []
+  (update-loop nil loaded-progress))
 
-(defn update-lemmatization [learning-information conjugation new-lemma]
-  (let [old-lemmatization (get (->> learning-information :text-db :conjugation->lemma) conjugation)]
-    (pprint/pprint old-lemmatization)
-    old-lemmatization))
+;; (print-current-learnable-sentences loaded-progress)
 
-;; Change lemmatization
-(let [conjugation "cakes"
-      new-lemma "cake"]
-  (update-lemmatization initial-setup conjugation new-lemma))
 
-(println "kage")
+
+(start-everything)
+;; (println "foo")
+;; (println "\u001b[31mbar\u001b[0m")
+;; (println "baz")
+;; (println "\u001b[2J")
+;; (println "\u001b[3A:ddddd")
+;; ;; (def updated-learn-info (update-lemmatization-and-reload loaded-progress "t" "not") )

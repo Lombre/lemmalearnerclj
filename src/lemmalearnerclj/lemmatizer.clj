@@ -92,26 +92,23 @@
        language->alternative-save-path
        slurp
        jsonista/read-value
-       (#(update-keys % (fn [x] (name x)))) ; The keys and values are strings, so we need to map back
-       (#(p/update-vals % (fn [x] (set (map (fn [y] y) x)))))))
+       (#(p/update-vals % (fn [x] (set x))))))
 
-(defn load-personal-dictionary [language]
+(defn load-personal-dictionary [language] ; Maps from conjugation to lemma
   (if (not (.exists (io/file (language->personal-save-path language)))) {}
       (->> (language->personal-save-path language)
            slurp
-           jsonista/read-value
-           (#(update-keys % (fn [x] x)))
-           (#(update-vals % (fn [x] x))))))
+           jsonista/read-value)))
 
-(defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]
-  (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
-        conjugation->lemma (choose-single-lemma conjugation->lemmas)
-        lemma->conjugations-uniform (uniformize-lemma->conjugations conjugation->lemma lemma->conjugations)]
-    (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations-uniform)))
-
+(defn save-personal-dictionary [language conjugation->lemma]
+  (->> conjugation->lemma
+       (into (sorted-map))
+       (#(json/write-str % :escape-unicode false))
+       (#(str/replace % #"]," "],\n "))
+       (spit (language->personal-save-path language))))
 
 (defn update-lemmatizer-with-personal-dictionary [[[conjugation lemma] & T] lemmatizer]
-  (println [conjugation lemma])
+  ;; (println [conjugation lemma])
   (if (nil? conjugation) lemmatizer
       (let [old-lemma (get (:conjugation->lemma lemmatizer) conjugation)
             lemma->conjugations-old-removed (->> (:lemma->conjugations lemmatizer)
@@ -119,13 +116,23 @@
             updated-conjugation->lemma (->> (:conjugation->lemma lemmatizer)
                                             (#(assoc % conjugation lemma
                                                      lemma lemma))) ; If a conjugation point at a lemma, the lemma should also point to itself
+
             updated-lemma->conjugations (merge-with set/union lemma->conjugations-old-removed {lemma #{conjugation lemma}})]
         (recur T (assoc lemmatizer :conjugation->lemma updated-conjugation->lemma :lemma->conjugations updated-lemma->conjugations)))))
 
+(defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]
+  (let [conjugation->lemmas (invert-many-to-many lemma->conjugations)
+        conjugation->lemma (choose-single-lemma conjugation->lemmas)
+        lemma->conjugations-uniform (uniformize-lemma->conjugations conjugation->lemma lemma->conjugations)
+        lemmatizer (Lemmatizer. language conjugation->lemma conjugation->lemmas lemma->conjugations-uniform)
+        personlized-lemmatizer (update-lemmatizer-with-personal-dictionary (load-personal-dictionary language) lemmatizer)]
+    personlized-lemmatizer))
+
 (defn json-lines->lemmatizer [language json-lines & {:keys [save-lemmatizer] :or {save-lemmatizer true}}]
-  (let [lemmatizer  (lemma->conjugations-to-lemmatizer language (json-lines->lemma->conjugation json-lines))]
+  (let [lemmatizer  (lemma->conjugations-to-lemmatizer language (json-lines->lemma->conjugation json-lines))
+        personalized-lemmatizer (update-lemmatizer-with-personal-dictionary (load-personal-dictionary language) lemmatizer)]
     (do (if save-lemmatizer (save-lemma->conjugations language (:lemma->conjugations lemmatizer)) nil)
-        lemmatizer)))
+        personalized-lemmatizer)))
 
 (defn language->lemmatizer [language]
   (wrap-with-print (str "Loading dictionary for language: " language)

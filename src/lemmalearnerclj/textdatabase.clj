@@ -35,7 +35,7 @@
 (defn parse-texts-in-directory [parse-config directory]
   (->> directory
        (directory->file-paths)
-       (pmap #(parser/text-path->text parse-config %))))
+       (map #(parser/text-path->text parse-config %))))
 
 (defn texts->sentences [texts]
   (->> texts
@@ -76,16 +76,16 @@
   (->> sentences
        (filter #(->> % :raw count (>= 70)))))
 
-(defn texts->text-db [{language :language} texts]
-  (println "Converting to text database.")
+(defn texts->text-db [{:keys [language] :as config} texts]
+  (helper/println? config "Converting to text database.")
   (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer language)
         sentences-with-lemmas (sentences->sentences-with-lemmas conjugation->lemma (texts->sentences texts))
         filtered-sentences (filter-sentences-for-learning sentences-with-lemmas)
-        _ (println "Before filtering: " (count sentences-with-lemmas) ", after filtering: " (count filtered-sentences))
+        _ (helper/println? config "Before filtering: " (count sentences-with-lemmas) ", after filtering: " (count filtered-sentences))
         conjugations (sentences->words filtered-sentences)
         lemmas (conjugations->lemmas conjugation->lemma conjugations)
         word->sentences (sentences->word->sentences filtered-sentences)]
-    (println "Finished converting.")
+    (helper/println? config "Finished converting.")
     (Textdatabase. texts filtered-sentences conjugations lemmas word->sentences
                    lemma->conjugations conjugation->lemma)))
 

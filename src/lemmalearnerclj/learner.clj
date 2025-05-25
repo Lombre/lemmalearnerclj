@@ -3,6 +3,7 @@
 ; (:import [testproject.textdatastructures Text Paragraph Sentence Conjugation Lemma])
   (:require
    [clojure.core.reducers :as reducers]
+   [clojure.java.io :as io]
    [clojure.math :as math]
    [clojure.pprint :refer [pprint]]
    [clojure.string :as str]
@@ -232,7 +233,7 @@
 
 (defn get-top-n-sentences [learn-info n]
   (->> (->> learn-info :learn-db :sentences-by-score)
-       (take 10)
+       (take n)
        (map first)))
 
 (defn make-fake-sentence-with-an-unlearned-lemma [learn-info]
@@ -316,10 +317,13 @@
                    (map :raw)
                    (str/join "\n")))))
 
+
 (defn load-learning-progress [learning-progress path]
-  (->> (slurp path)
-       (#(str/split % #"\n"))
-       (map #(parser/parse-raw-paragraph (->> learning-progress :config :parsing-config) %))
-       (map #(->> % :sentences first))
-       (textdatabase/sentences->sentences-with-lemmas (->> learning-progress :text-db :conjugation->lemma))
+  (->> (if (and (some? path) (.exists (io/file path)))
+         (->> (slurp path)
+              (#(str/split % #"\n"))
+              (map #(parser/parse-raw-paragraph (->> learning-progress :config :parsing-config) %))
+              (map #(->> % :sentences first))
+              (textdatabase/sentences->sentences-with-lemmas (->> learning-progress :text-db :conjugation->lemma)))
+         [])
        (learn-sentences learning-progress)))
