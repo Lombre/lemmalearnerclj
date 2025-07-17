@@ -30,7 +30,8 @@
    :learning-config {:drop-off-factor 0.5
                      :max-lemma-times-learned 3
                      :max-conjugation-times-learned 2
-                     :max-lemmas-to-learn 10000}})
+                     :max-lemmas-to-learn 100000
+                     :max-new-lemmas-per-sentence 1}})
 
 (def test-sentence1 (parser/parse-raw-sentence parse-config "Dette er det."))
 (def test-sentence2 (parser/parse-raw-sentence parse-config "Dette også det."))
@@ -55,11 +56,6 @@
 (def true-large-learn-info
   (directory->new-learn-info (assoc test-config :language "english") "test/lemmalearnerclj/test_files/larger_texts/"))
 
-(def learned-true-large-text
-  (learn-all-lemmas true-large-learn-info))
-
-(def learned-large-text
-  (learn-all-lemmas large-learn-info))
 
 (deftest test-correct-initialized-sentences-by-score
   (testing ""
@@ -68,6 +64,14 @@
                                    seq (map #(identity [(:raw (first %)) (second %)])))]
       (is (= (seq [["Kage." 3.0] ["Lære." 2.0]])
              learnable-sentences)))))
+
+(deftest test-update-lemma-times-learned
+  (testing ""
+    (is (= {"sætning" 1}
+           (update-lemma-times-learned (:text-db large-learn-info)
+                                       {}
+                                       {"sætning" 1}
+                                       ["sætning"])))))
 
 (deftest test-learn-sentence-updates-sentences-by-score
   (testing ""
@@ -160,6 +164,12 @@
   (testing "Did not return a lemma word"
     (let [unlearned-lemma (get-an-unlearned-lemma large-learn-info)]
       (is (not (nil? unlearned-lemma))))))
+
+(def learned-true-large-text
+  (learn-all-lemmas true-large-learn-info))
+
+(def learned-large-text
+  (learn-all-lemmas large-learn-info))
 
 (deftest test-all-lemmas-learned-after-finished-learning
   (testing ""

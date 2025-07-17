@@ -12,15 +12,16 @@
    [lemmalearnerclj.parser :as parser]
    [lemmalearnerclj.textdatabase :as textdatabase]
    [lemmalearnerclj.textdatastructures]
-   [parallel.core :as p])
+   [parallel.core :as p]
+   [lemmalearnerclj.helper :as helper])
   (:import
    [lemmalearnerclj.textdatastructures Sentence]))
 
 (require '[clojure.data.priority-map :refer [priority-map priority-map-by]])
 
-(defrecord Score-point [lemma sentence score])
+(defrecord Score-point [lemmas sentence score])
 
-(defrecord Learning-progress [conj->#learned learning-order])
+(defrecord Learning-progress [conj->#learned lemma->#learned learning-order])
 
 (defrecord Learning-database [sentences-by-score lemmas-by-score lemma->frequency conjugation->frequency])
 
@@ -51,8 +52,11 @@
 (defn conjugation->times-learned [learn-prog word]
   (get (:conj->#learned learn-prog) word 0))
 
-(defn lemma->times-learned
-  ([learn-info lemma] (lemma->times-learned (:learn-prog learn-info) (:text-db learn-info) lemma))
+(defn lemma->times-learned [learn-prog lemma]
+  (->> learn-prog :lemma->#learned (#(get % lemma 0))))
+
+(defn from-conjugations-lemma->times-learned
+  ([learn-info lemma] (from-conjugations-lemma->times-learned (:learn-prog learn-info) (:text-db learn-info) lemma))
   ([learn-prog text-db lemma]
    (->> lemma
         (get (:lemma->conjugations text-db))
@@ -61,7 +65,7 @@
 
 (defn sentence->unlearned-lemmas [{text-db :text-db learn-prog :learn-prog} sentence]
   (->> (sentence->lemmas text-db sentence)
-       (filter #(= 0 (lemma->times-learned learn-prog text-db %)))))
+       (filter #(= 0 (lemma->times-learned learn-prog %)))))
 
 (defn sentences->lemmas-by-frequency [text-db sentences]
   (->> sentences
@@ -80,14 +84,14 @@
        (clojure.core/reduce-kv #(assoc %1 %2 %3) (priority-map-by >))))
 
 (defn learnable? [learn-info sentence]
-  (= (count (sentence->unlearned-lemmas learn-info sentence))
-     1))
+  (<= 1 (count (sentence->unlearned-lemmas learn-info sentence))
+      (->> learn-info :config :learning-config :max-new-lemmas-per-sentence)))
 
 (defn score-by-lemma-frequency
   ([{:keys [config learn-db learn-prog text-db]} lemma]
    #_-> (score-by-lemma-frequency (:learning-config config) (:lemma->frequency learn-db) text-db learn-prog lemma))
   ([learning-config lemma->frequency text-db learn-prog lemma]
-   (let [times-learned (lemma->times-learned learn-prog text-db lemma)]
+   (let [times-learned (lemma->times-learned learn-prog lemma)]
      (if (> times-learned (getx learning-config :max-lemma-times-learned)) 0.0
          (* (/ (Math/log (lemma->frequency lemma 0.0)) (Math/log 2.0))
             (Math/pow (:drop-off-factor learning-config) times-learned ))))))
@@ -97,7 +101,7 @@
    #_-> (score-by-lemma-and-conjugation-frequency (:learning-config config) (:lemma->frequency learn-db) (:conjugation->frequency learn-db) text-db learn-prog conjugation))
   ([learning-config lemma->frequency conjugation->frequency text-db learn-prog conjugation]
    (let [lemma (conjugation->lemma text-db conjugation :nilable true)
-         lemma-times-learned (lemma->times-learned learn-prog text-db lemma)
+         lemma-times-learned (lemma->times-learned learn-prog lemma)
          conjugation-times-learned (conjugation->times-learned text-db conjugation)]
      (if (is-nonsense-conjugation? text-db conjugation) 0.0
          (+ (if (> lemma-times-learned (getx learning-config :max-lemma-times-learned)) 0.0
@@ -114,7 +118,8 @@
    (->> (:words sentence)
         ;; distinct
         (map #(score-by-lemma-and-conjugation-frequency (getx config :learning-config) lemma->frequency conjugation->frequency text-db learn-prog %))
-        (reducers/reduce +))))
+        (reducers/reduce +)
+        (#(/ % (count (sentence->unlearned-lemmas {:text-db text-db :learn-prog learn-prog} sentence )))))))
 
 (defn sentences->sentences-by-score [learn-info sentences]
   (->> sentences
@@ -127,7 +132,7 @@
         conjugations-by-frequency (text-db->conjugation->frequency text-db)
         lemmas-by-score lemmas-by-frequency
         sentences-by-score (sentences->sentences-by-score
-                            (->Learning-information (->Learning-progress {} [])
+                            (->Learning-information (->Learning-progress {} {} [])
                                                     {:lemma->frequency lemmas-by-frequency}
                                                     text-db
                                                     config)
@@ -153,7 +158,7 @@
 (defn lemma-learned-max-times? [learn-info lemma]
   (or (nil? lemma)
       (< (->> learn-info :config :learning-config :max-lemma-times-learned (+ 1))
-         (lemma->times-learned learn-info lemma))))
+         (lemma->times-learned (:learn-prog learn-info) lemma))))
 
 (defn update-sentences-by-scores [learn-info sentence]
   (->> (sentence->lemmas (:text-db learn-info) sentence)
@@ -171,16 +176,26 @@
         updated-lemmas-by-score (apply dissoc (:lemmas-by-score learn-db) (sentence->lemmas text-db sentence))]
     (->Learning-database updated-sentences-by-scores updated-lemmas-by-score (:lemma->frequency learn-db) (:conjugation-frequency learn-db))))
 
-(defn update-times-learned [conj->#learned conjugations]
+(defn update-lemma-times-learned [text-db lemma->#learned conj->#learned lemmas]
+  (reducers/reduce #(assoc %1 %2 (->> %2
+                                      (get (:lemma->conjugations text-db))
+                                      (map conj->#learned)
+                                      (filter some?)
+                                      (reducers/reduce + 0)))
+                   lemma->#learned lemmas))
+
+(defn update-conj-times-learned [conj->#learned conjugations]
   (reducers/reduce #(update %1 %2 (fnil inc 0)) conj->#learned conjugations))
 
 (defn update-learning-order
   "Append all the learned (word, sentence, score) pairs"
   [learn-info sentence unlearned-lemmas score]
-  (reducers/reduce #(conj %1 (->Score-point %2 sentence score)) (->> learn-info :learn-prog :learning-order) unlearned-lemmas ))
+  (conj  (->> learn-info :learn-prog :learning-order) (->Score-point unlearned-lemmas sentence score)))
 
 (defn count-lemmas-learned [learn-info]
-  (->> learn-info :learn-prog :learning-order count))
+  (let [total-lemmas (->> learn-info :text-db :lemmas count)
+        remaining-lemmas (->> learn-info :learn-db :lemmas-by-score count)]
+    (- total-lemmas remaining-lemmas)))
 
 (defn sentence->str-word-scores [learn-info sentence]
   (->> sentence
@@ -189,7 +204,7 @@
                  (let [lemma (conjugation->lemma (:text-db learn-info) %)]
                    (list [lemma
                           %
-                          (lemma->times-learned learn-info lemma)
+                          (lemma->times-learned (:learn-prog learn-info) lemma)
                           (get (->> learn-info :learn-prog :conj->#learned) %)
                           (get (->> learn-info :learn-db :lemma->frequency) lemma)
                           (get (->> learn-info :learn-db :conjugation->frequency) %)
@@ -200,7 +215,7 @@
   (let [total-lemma-count (->> learn-info :text-db :lemmas count)
         current-lemma-count (+ 1 (count-lemmas-learned learn-info))
         unlearned-lemmas (sentence->unlearned-lemmas learn-info sentence)
-        message (str current-lemma-count " of " total-lemma-count ", " (set unlearned-lemmas) " "
+        message (str current-lemma-count " of " total-lemma-count ", " (helper/make-text-bold (set unlearned-lemmas)) " "
                      (format "%.2f" (if (nil? score) 0.0 score)) " -> " (:raw sentence) "\n\t"
                      (sentence->str-word-scores learn-info sentence))]
     (print-if (or (zero? (mod current-lemma-count 100))
@@ -212,11 +227,15 @@
 (defn learn-sentence
   ([^Learning-information learn-info sentence] (learn-sentence learn-info sentence (float (score-sentence learn-info sentence))))
   ([^Learning-information learn-info sentence ^Float score]
-   (pprint (sentence->unlearned-lemmas learn-info sentence))
+   ;; (pprint (sentence->unlearned-lemmas learn-info sentence))
    (let [unlearned-lemmas (sentence->unlearned-lemmas learn-info sentence)
          updated-learning-order (update-learning-order learn-info sentence unlearned-lemmas score)
-         updated-times-learned (update-times-learned (:conj->#learned (:learn-prog learn-info)) (:words sentence))
-         updated-progress (->Learning-progress updated-times-learned updated-learning-order)
+         updated-conj-times-learned (update-conj-times-learned (:conj->#learned (:learn-prog learn-info)) (:words sentence))
+         updated-lemma-times-learned (update-lemma-times-learned (:text-db learn-info)
+                                                                 (->> learn-info :learn-prog :lemma->#learned)
+                                                                 updated-conj-times-learned
+                                                                 (sentence->lemmas (:text-db learn-info) sentence))
+         updated-progress (->Learning-progress updated-conj-times-learned updated-lemma-times-learned updated-learning-order)
          updated-learn-db (update-learn-db-with-learned-sentence (assoc learn-info :learn-prog updated-progress) sentence)]
      (print-current-learning-status learn-info sentence score)
      (->Learning-information updated-progress updated-learn-db (:text-db learn-info) (:config learn-info)))))
@@ -267,7 +286,7 @@
       (pprint sentence)
       (pprint (sentence->lemmas (:text-db learn-info) sentence))
       (pprint (sentence->unlearned-lemmas learn-info sentence))
-      (throw (Exception. (str "Could not not learn sentence: " (prn sentence))))))
+      (throw (Exception. (str "Could not not learn sentence: " (:raw sentence))))))
 
 (defn learn-nth-top-sentence [learn-info n]
   (if (finished-learning? learn-info) nil
@@ -293,7 +312,7 @@
 (defn text-db->new-learn-info [config text-db]
   (wrap-with-print
    (str "Started preparing for learning.")
-   (let [learn-prog (->Learning-progress {} [])
+   (let [learn-prog (->Learning-progress {} {} [])
          learn-db (text-db->learn-db config text-db)
          learn-info (->Learning-information learn-prog learn-db text-db config)]
      learn-info)

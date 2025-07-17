@@ -34,6 +34,7 @@
                                   \¡ \!}
                     :other-punctuation #{\. \; \:}}
    :learning-config {:drop-off-factor 0.5
+                     :max-new-lemmas-per-sentence 1
                      :max-lemma-times-learned 5
                      :max-conjugation-times-learned 2
                      :max-lemmas-to-learn 24000}
@@ -160,14 +161,17 @@
 
 (def loaded-progress (learner/load-learning-progress initial-setup (get-path-last-saved-learning-progress)))
 
-(defn start-everything []
-  (update-loop nil loaded-progress))
+;; (defn start-everything []
+;;   (update-loop nil loaded-progress))
+
+
+
 
 ;; (print-current-learnable-sentences loaded-progress)
 
 
 
-(start-everything)
+;; (start-everything)
 ;; (println "foo")
 ;; (println "\u001b[31mbar\u001b[0m")
 ;; (println "baz")

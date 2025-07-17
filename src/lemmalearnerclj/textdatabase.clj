@@ -35,7 +35,7 @@
 (defn parse-texts-in-directory [parse-config directory]
   (->> directory
        (directory->file-paths)
-       (map #(parser/text-path->text parse-config %))))
+       (pmap #(parser/text-path->text parse-config %))))
 
 (defn texts->sentences [texts]
   (->> texts

@@ -4,6 +4,12 @@
    [clojure.pprint :as pprint]
    [clojure.walk :as walk]))
 
+(defn println? [should-print? & args]
+  (if should-print? (println args) nil))
+
+(defn make-text-bold [text]
+  (str "\u001b[1m" text "\u001b[22m" ))
+
 (defn record->map [record-collection]
   (walk/postwalk #(if (record? %) (into {} %) %) record-collection))
 
