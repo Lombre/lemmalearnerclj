@@ -1,4 +1,4 @@
-(ns lemmalearnerclj.gui
+(ns lemmalearnerclj.tui
   (:require
    [clojure.core.match :refer [match]]
    [clojure.core.reducers :as reducers]
@@ -10,7 +10,9 @@
    [lemmalearnerclj.textdatabase :as textdatabase]
    [lemmalearnerclj.textdatastructures :refer :all]
    [clojure.java.io :as io]
-   [lemmalearnerclj.lemmatizer :as lemmatizer])
+   [lemmalearnerclj.lemmatizer :as lemmatizer]
+   [cljfx.api :as fx]
+   [cljfx.ext.list-view :as fx.ext.list-view])
   (:import
    [lemmalearnerclj.textdatastructures
     Paragraph
@@ -160,6 +162,39 @@
       (update-loop nil initial-setup)))
 
 (def loaded-progress (learner/load-learning-progress initial-setup (get-path-last-saved-learning-progress)))
+
+
+(def current-raw-learned-sentences (->> loaded-progress :learn-prog :learning-order (map #(->> % second second :raw))))
+
+
+(def *state
+  (atom {:title "App title"
+         :items current-raw-learned-sentences}))
+
+(defn learned-sentence-view [{:keys [items]}]
+  {:fx/type :list-view
+   :items items})
+
+(defn root-window [{:keys [title items]}]
+  {:fx/type :stage
+   :showing true
+   :title title
+   :scene {:fx/type :scene
+           :root {:fx/type :v-box
+                  :children [{:fx/type :label
+                              :text "Window title input"}
+                             {:fx/type :h-box
+                              :children [{:fx/type learned-sentence-view
+                                          :items items}
+                                         {:fx/type learned-sentence-view
+                                          :items items}]}]}}})
+
+(def renderer
+  (fx/create-renderer
+   :middleware (fx/wrap-map-desc assoc :fx/type root-window)))
+
+(fx/mount-renderer *state renderer)
+
 
 ;; (defn start-everything []
 ;;   (update-loop nil loaded-progress))

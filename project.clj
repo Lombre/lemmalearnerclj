@@ -10,13 +10,11 @@
                  [org.clojure/data.priority-map "1.2.0"]
                  [com.phronemophobic/membrane  "0.11.1.1-beta"]
                  [clojure-lanterna "0.9.7"]
-
-                 ]
-
+                 [cljfx "1.9.5"]]
   :plugins [[lein-cloverage "1.2.2"] [lein-try "0.4.3"]]
   :jvm-opts ["-Djdk.attach.allowAttachSelf" ; To enable profiling
              "-Xmx16g"]                     ; More memory!
-  :java-source-paths ["src/java" "test/java"]
+  :java-source-paths ["src/javaaa" "test/javaaa"]
   :main ^:skip-aot lemmalearnerclj.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
