@@ -9,11 +9,12 @@
    [clojure.string :as str]
    [clojure.test :refer :all]
    [lemmalearnerclj.helper :refer :all]
+   [lemmalearnerclj.helper :as helper]
+   [lemmalearnerclj.lemmatizer :as lemmatizer]
    [lemmalearnerclj.parser :as parser]
    [lemmalearnerclj.textdatabase :as textdatabase]
    [lemmalearnerclj.textdatastructures]
-   [parallel.core :as p]
-   [lemmalearnerclj.helper :as helper])
+   [parallel.core :as p])
   (:import
    [lemmalearnerclj.textdatastructures Sentence]))
 
@@ -32,7 +33,7 @@
 
 (defn conjugation->lemma [text-db conjugation & {:keys [nilable] :or {nilable false}}]
   (if (not nilable)
-    (getx (:conjugation->lemma text-db) conjugation )
+    (getx (:conjugation->lemma text-db) conjugation)
     (get (:conjugation->lemma text-db) conjugation)))
 
 (defn sentence->lemmas [text-db sentence]
@@ -94,7 +95,7 @@
    (let [times-learned (lemma->times-learned learn-prog lemma)]
      (if (> times-learned (getx learning-config :max-lemma-times-learned)) 0.0
          (* (/ (Math/log (lemma->frequency lemma 0.0)) (Math/log 2.0))
-            (Math/pow (:drop-off-factor learning-config) times-learned ))))))
+            (Math/pow (:drop-off-factor learning-config) times-learned))))))
 
 (defn score-by-lemma-and-conjugation-frequency
   ([{:keys [config learn-db learn-prog text-db]} conjugation]
@@ -119,7 +120,11 @@
         ;; distinct
         (map #(score-by-lemma-and-conjugation-frequency (getx config :learning-config) lemma->frequency conjugation->frequency text-db learn-prog %))
         (reducers/reduce +)
-        (#(/ % (count (sentence->unlearned-lemmas {:text-db text-db :learn-prog learn-prog} sentence )))))))
+        (#(/ % (let [n-unlearned-lemmas (count (sentence->unlearned-lemmas {:text-db text-db :learn-prog learn-prog} sentence))]
+                 (if (< 0 n-unlearned-lemmas)
+                   n-unlearned-lemmas
+                   10                   ;Debuff for completely learned sentences
+                   )))))))
 
 (defn sentences->sentences-by-score [learn-info sentences]
   (->> sentences
@@ -166,7 +171,7 @@
        set
        (filter #(not (and (conjugation-learned-max-times? learn-info %)
                           (lemma-learned-max-times? learn-info (conjugation->lemma (:text-db learn-info) % :nilable true)))))
-       (mapcat #(get (->> learn-info :text-db :conjugation->sentences ) %))
+       (mapcat #(get (->> learn-info :text-db :conjugation->sentences) %))
        #_set
        (pmap #(identity [% (learnable? learn-info %)]))
        (update-with-sentence-pairs learn-info)))
@@ -209,7 +214,7 @@
                           (get (->> learn-info :learn-db :lemma->frequency) lemma)
                           (get (->> learn-info :learn-db :conjugation->frequency) %)
                           (format "%.2f" (score-by-lemma-frequency learn-info lemma))]))))
-       (str/join " " )))
+       (str/join " ")))
 
 (defn- print-current-learning-status [learn-info sentence ^Float score]
   (let [total-lemma-count (->> learn-info :text-db :lemmas count)
@@ -240,7 +245,6 @@
      (print-current-learning-status learn-info sentence score)
      (->Learning-information updated-progress updated-learn-db (:text-db learn-info) (:config learn-info)))))
 
-
 (defn learn-sentences
   ([learn-info sentences] (reducers/reduce #(learn-sentence %1 %2) learn-info sentences))
   ([learn-info sentences scores] (reducers/reduce #(learn-sentence %1 (first %2) (second %2))
@@ -258,11 +262,11 @@
 (defn make-fake-sentence-with-an-unlearned-lemma [learn-info]
   (let [unlearned-lemma (get-an-unlearned-lemma learn-info)
         unlearned-lemma-sentence (Sentence. (str "NoSentence: " unlearned-lemma)
-                                                []
-                                                [unlearned-lemma ]) ]
-        (if (not (nil? unlearned-lemma)) nil
-            (throw (Exception. "Error: Trying to learn an unlearned lemma, when there are non left.")))
-        [unlearned-lemma-sentence 0.0 learn-info]))
+                                            []
+                                            [unlearned-lemma])]
+    (if (not (nil? unlearned-lemma)) nil
+        (throw (Exception. "Error: Trying to learn an unlearned lemma, when there are non left.")))
+    [unlearned-lemma-sentence 0.0 learn-info]))
 
 (defn pop-nth-top-sentence [learn-info n]
   (let [sentences-by-score (->> learn-info :learn-db :sentences-by-score)]
@@ -336,7 +340,6 @@
                    (map :raw)
                    (str/join "\n")))))
 
-
 (defn load-learning-progress [learning-progress path]
   (->> (if (and (some? path) (.exists (io/file path)))
          (->> (slurp path)
@@ -346,3 +349,20 @@
               (textdatabase/sentences->sentences-with-lemmas (->> learning-progress :text-db :conjugation->lemma)))
          [])
        (learn-sentences learning-progress)))
+
+(defn update-lemmatization [learning-information conjugation new-lemma]
+  (->> (lemmatizer/load-personal-dictionary (->> learning-information :config :language))
+       (#(assoc % conjugation new-lemma))
+       (lemmatizer/save-personal-dictionary (->> learning-information :config :language))))
+
+(defn update-lemmatization-and-reload [learn-info conjugation new-lemma]
+  (do (update-lemmatization learn-info conjugation new-lemma) ; Saves the new lemmatization to disk, and then we reload everything.
+      (let [updated-text-db (textdatabase/texts->text-db (->> learn-info :config)
+                                                         (->> learn-info :text-db :texts)
+                                                         (->> learn-info :text-db))
+            updated-sentences-learned (textdatabase/sentences->sentences-with-lemmas (:conjugation->lemma updated-text-db)
+                                                                                     (->> learn-info :learn-prog :learning-order (map :sentence)))
+            ;;  We have realoaded everything with the updated lemmatization, now we learn the sentences that we have already learned again.
+            updated-learn-info (-> (text-db->new-learn-info (:config learn-info) updated-text-db)
+                                   (learn-sentences updated-sentences-learned))]
+        updated-learn-info)))

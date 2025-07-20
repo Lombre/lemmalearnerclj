@@ -117,7 +117,7 @@
                                             (#(assoc % conjugation lemma
                                                      lemma lemma))) ; If a conjugation point at a lemma, the lemma should also point to itself
 
-            updated-lemma->conjugations (merge-with set/union lemma->conjugations-old-removed {lemma #{conjugation lemma}})]
+            updated-lemma->conjugations (merge-with set/union lemma->conjugations-old-removed {lemma (set [conjugation lemma])})]
         (recur T (assoc lemmatizer :conjugation->lemma updated-conjugation->lemma :lemma->conjugations updated-lemma->conjugations)))))
 
 (defn lemma->conjugations-to-lemmatizer [language lemma->conjugations]

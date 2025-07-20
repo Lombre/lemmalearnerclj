@@ -76,15 +76,16 @@
   (->> sentences
        (filter #(->> % :raw count (>= 70)))))
 
-(defn texts->text-db [{:keys [language] :as config} texts]
+
+(defn texts->text-db [{:keys [language] :as config} texts & [old-text-db]]
   (helper/println? config "Converting to text database.")
   (let [{lemma->conjugations :lemma->conjugations conjugation->lemma :conjugation->lemma} (lemmatizer/language->lemmatizer language)
-        sentences-with-lemmas (sentences->sentences-with-lemmas conjugation->lemma (texts->sentences texts))
+        sentences-with-lemmas (time (sentences->sentences-with-lemmas conjugation->lemma (or (:sentences old-text-db) (texts->sentences texts))))
         filtered-sentences (filter-sentences-for-learning sentences-with-lemmas)
         _ (helper/println? config "Before filtering: " (count sentences-with-lemmas) ", after filtering: " (count filtered-sentences))
-        conjugations (sentences->words filtered-sentences)
-        lemmas (conjugations->lemmas conjugation->lemma conjugations)
-        word->sentences (sentences->word->sentences filtered-sentences)]
+        conjugations (time (or (:conjugations old-text-db) (sentences->words filtered-sentences)))
+        lemmas (time (conjugations->lemmas conjugation->lemma conjugations))
+        word->sentences (time (sentences->word->sentences filtered-sentences))]
     (helper/println? config "Finished converting.")
     (Textdatabase. texts filtered-sentences conjugations lemmas word->sentences
                    lemma->conjugations conjugation->lemma)))
